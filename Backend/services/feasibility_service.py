@@ -143,10 +143,7 @@ def build_explanations(
     components: ScoreComponents,
 ) -> list[FeasibilityExplanation]:
     explanations = [
-        explanation_from_component(
-            f"Trip distance {distance_km:.1f} km",
-            components["distance_score"],
-        ),
+        explanation_for_distance(distance_km, components["distance_score"]),
         explanation_from_component(
             "Estimated lane continuity",
             components["infrastructure_score"],
@@ -176,7 +173,10 @@ def build_explanations(
             )
         )
 
-    return prioritise_explanations(explanations)
+    top_explanations = prioritise_explanations(explanations)
+    if not top_explanations:
+        return default_explanations(score, distance_km)
+    return top_explanations
 
 
 def score_distance(distance_km: float) -> int:
@@ -230,15 +230,45 @@ def score_safety(distance_km: float) -> int:
 def explanation_from_component(label: str, component_score: int) -> FeasibilityExplanation:
     if component_score >= 75:
         impact = "Low"
-        factor = f"{label} is supporting a stronger cycling score"
+        factor = f"{label} is supporting the cycling feasibility score"
     elif component_score >= 50:
         impact = "Medium"
-        factor = f"{label} has a moderate effect on this trip"
+        factor = f"{label} has a moderate influence on this trip"
     else:
         impact = "High"
         factor = f"{label} is reducing the cycling feasibility score"
 
     return FeasibilityExplanation(factor=factor, impact=impact)
+
+
+def explanation_for_distance(distance_km: float, component_score: int) -> FeasibilityExplanation:
+    if component_score >= 75:
+        impact = "Low"
+        factor = f"The trip distance of {distance_km:.1f} km is manageable for cycling"
+    elif component_score >= 50:
+        impact = "Medium"
+        factor = f"The trip distance of {distance_km:.1f} km has a moderate effect on feasibility"
+    else:
+        impact = "High"
+        factor = f"The trip distance of {distance_km:.1f} km is reducing feasibility"
+
+    return FeasibilityExplanation(factor=factor, impact=impact)
+
+
+def default_explanations(score: int, distance_km: float) -> list[FeasibilityExplanation]:
+    if score < 50:
+        return [
+            FeasibilityExplanation(
+                factor=f"The trip distance of {distance_km:.1f} km appears challenging for cycling",
+                impact="High",
+            )
+        ]
+    return [
+        FeasibilityExplanation(
+            factor=f"The trip distance of {distance_km:.1f} km appears reasonable for cycling",
+            impact="Low",
+        )
+    ]
 
 
 def prioritise_explanations(
