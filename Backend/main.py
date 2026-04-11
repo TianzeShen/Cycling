@@ -4,9 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 try:
     # Support running from the repo root: `uvicorn Backend.main:app --reload`
     from Backend.routers.feasibility import router as feasibility_router
+    from Backend.routers.routing import router as routing_router
 except ModuleNotFoundError:
     # Support running inside the Backend folder: `uvicorn main:app --reload`
     from routers.feasibility import router as feasibility_router
+    from routers.routing import router as routing_router
 
 app = FastAPI(title="Cycling Decision & Navigation API")
 
@@ -25,3 +27,4 @@ def read_root():
 
 # Keep API routes grouped under their feature modules.
 app.include_router(feasibility_router)
+app.include_router(routing_router)

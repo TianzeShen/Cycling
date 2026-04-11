@@ -46,3 +46,32 @@ class FeasibilityResponse(BaseModel):
     is_supported_area: bool
     warning_message: str | None = None
     explanations: list[FeasibilityExplanation] = Field(default_factory=list)
+
+
+RiskLevel = Literal["Green", "Yellow", "Red"]
+
+
+class RoutingRequest(FeasibilityRequest):
+    pass
+
+
+class RouteSegment(BaseModel):
+    coordinates: list[list[float]] = Field(
+        ...,
+        description="Line segment coordinates in [latitude, longitude] format.",
+    )
+    risk_level: RiskLevel
+    is_gap: bool
+
+
+class RoutingAlert(BaseModel):
+    location: list[float] = Field(
+        ...,
+        description="Alert location in [latitude, longitude] format.",
+    )
+    message: str
+
+
+class RoutingResponse(BaseModel):
+    route_segments: list[RouteSegment] = Field(default_factory=list)
+    alerts: list[RoutingAlert] = Field(default_factory=list)
