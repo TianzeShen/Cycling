@@ -7,8 +7,19 @@ except ModuleNotFoundError:
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
     route_points = interpolate_route_points(request)
     segments = build_route_segments(route_points)
-    alerts = build_gap_alerts(segments)
-    return RoutingResponse(route_segments=segments, alerts=alerts)
+    try:
+        alerts = build_route_alerts(segments)
+        alerts_status_message = None
+    except Exception:
+        alerts = []
+        alerts_status_message = (
+            "Safety alerts are temporarily unavailable. Please review route colors carefully."
+        )
+    return RoutingResponse(
+        route_segments=segments,
+        alerts=alerts,
+        alerts_status_message=alerts_status_message,
+    )
 
 
 def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
@@ -61,24 +72,43 @@ def detect_gap(segment_index: int, risk_level: str) -> bool:
     return segment_index == 1 and risk_level == "Red"
 
 
-def build_gap_alerts(segments: list[RouteSegment]) -> list[RoutingAlert]:
+def build_route_alerts(segments: list[RouteSegment]) -> list[RoutingAlert]:
     alerts: list[RoutingAlert] = []
     for segment in segments:
-        if not segment.is_gap:
-            continue
-        midpoint = midpoint_from_segment(segment.coordinates)
-        alerts.append(
-            RoutingAlert(
-                location=midpoint,
-                message="Disconnected bike lane detected ahead",
+        if segment.is_gap:
+            alerts.append(
+                RoutingAlert(
+                    location=alert_position_before_segment(segment.coordinates),
+                    level="Red",
+                    message="Disconnected bike lane detected ahead. Prepare to slow down or reroute.",
+                )
             )
-        )
+            continue
+
+        if segment.risk_level == "Red":
+            alerts.append(
+                RoutingAlert(
+                    location=alert_position_before_segment(segment.coordinates),
+                    level="Red",
+                    message="High-risk segment ahead. Use caution before entering this section.",
+                )
+            )
+            continue
+
+        if segment.risk_level == "Yellow":
+            alerts.append(
+                RoutingAlert(
+                    location=alert_position_before_segment(segment.coordinates),
+                    level="Yellow",
+                    message="Moderate-risk segment ahead. Stay alert and prepare for changing conditions.",
+                )
+            )
     return alerts
 
 
-def midpoint_from_segment(coordinates: list[list[float]]) -> list[float]:
+def alert_position_before_segment(coordinates: list[list[float]]) -> list[float]:
     start, end = coordinates
     return [
-        round((start[0] + end[0]) / 2, 6),
-        round((start[1] + end[1]) / 2, 6),
+        round(start[0] + (end[0] - start[0]) * 0.2, 6),
+        round(start[1] + (end[1] - start[1]) * 0.2, 6),
     ]

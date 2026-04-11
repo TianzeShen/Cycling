@@ -69,9 +69,11 @@ class RoutingAlert(BaseModel):
         ...,
         description="Alert location in [latitude, longitude] format.",
     )
+    level: RiskLevel
     message: str
 
 
 class RoutingResponse(BaseModel):
     route_segments: list[RouteSegment] = Field(default_factory=list)
     alerts: list[RoutingAlert] = Field(default_factory=list)
+    alerts_status_message: str | None = None
