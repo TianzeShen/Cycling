@@ -26,10 +26,12 @@ fun MainMapBottomSheet(
     isHeatmapMode: Boolean,
     feasibilityState: FeasibilityUiState,
     routingState: RoutingUiState,
+    isRouteVisible: Boolean,
     heatmapReports: List<HeatmapReport>,
     selectedHeatmapRisk: RiskLevel?,
     onHeatmapRiskChange: (RiskLevel?) -> Unit,
     onViewRoute: () -> Unit,
+    onHideRoute: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -62,7 +64,9 @@ fun MainMapBottomSheet(
                 FeasibilityPanel(
                     feasibilityState = feasibilityState,
                     routingState = routingState,
-                    onViewRoute = onViewRoute
+                    isRouteVisible = isRouteVisible,
+                    onViewRoute = onViewRoute,
+                    onHideRoute = onHideRoute
                 )
             }
         }

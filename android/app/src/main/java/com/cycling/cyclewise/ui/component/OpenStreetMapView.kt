@@ -45,7 +45,11 @@ fun OpenStreetMapView(
         update = { map ->
             map.controller.setCenter(center)
             map.overlays.clear()
-            userLocation?.let { location ->
+            userLocation
+                ?.takeUnless { location ->
+                    location.isSamePointAs(startLocation) || location.isSamePointAs(destinationLocation)
+                }
+                ?.let { location ->
                 map.overlays.add(
                     Marker(map).apply {
                         position = location
@@ -59,6 +63,7 @@ fun OpenStreetMapView(
                     Marker(map).apply {
                         position = location
                         title = "Start point"
+                        icon = createLocationPinIcon(map.context, Color.rgb(47, 128, 237))
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     }
                 )
@@ -68,6 +73,7 @@ fun OpenStreetMapView(
                     Marker(map).apply {
                         position = location
                         title = "Destination"
+                        icon = createLocationPinIcon(map.context, Color.rgb(185, 106, 247))
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     }
                 )
@@ -87,6 +93,7 @@ fun OpenStreetMapView(
                         Marker(map).apply {
                             position = GeoPoint(midpoint.lat, midpoint.lng)
                             title = "Infrastructure gap"
+                            icon = createWarningIcon(map.context, Color.rgb(198, 40, 40))
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                         }
                     )
@@ -97,6 +104,7 @@ fun OpenStreetMapView(
                     Marker(map).apply {
                         position = GeoPoint(alert.location.lat, alert.location.lng)
                         title = alert.message
+                        icon = createWarningIcon(map.context, Color.rgb(249, 128, 70))
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     }
                 )
@@ -199,6 +207,86 @@ private fun createRiskMarkerIcon(context: Context, color: Int): BitmapDrawable {
     return BitmapDrawable(context.resources, bitmap)
 }
 
+private fun createLocationPinIcon(context: Context, color: Int): BitmapDrawable {
+    val density = context.resources.displayMetrics.density
+    val size = (44 * density).toInt()
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val scale = size / 44f
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color
+        style = Paint.Style.FILL
+    }
+    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 2.8f * scale
+    }
+    val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+
+    val path = android.graphics.Path().apply {
+        moveTo(22f * scale, 40f * scale)
+        cubicTo(13f * scale, 29f * scale, 8f * scale, 22f * scale, 8f * scale, 15f * scale)
+        cubicTo(8f * scale, 7f * scale, 14f * scale, 2f * scale, 22f * scale, 2f * scale)
+        cubicTo(30f * scale, 2f * scale, 36f * scale, 7f * scale, 36f * scale, 15f * scale)
+        cubicTo(36f * scale, 22f * scale, 31f * scale, 29f * scale, 22f * scale, 40f * scale)
+        close()
+    }
+
+    canvas.drawPath(path, fillPaint)
+    canvas.drawPath(path, strokePaint)
+    canvas.drawCircle(22f * scale, 15f * scale, 5.5f * scale, innerPaint)
+
+    return BitmapDrawable(context.resources, bitmap)
+}
+
+private fun createWarningIcon(context: Context, color: Int): BitmapDrawable {
+    val density = context.resources.displayMetrics.density
+    val size = (46 * density).toInt()
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val scale = size / 46f
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color
+        style = Paint.Style.FILL
+    }
+    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 3f * scale
+        strokeJoin = Paint.Join.ROUND
+    }
+    val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 3.2f * scale
+        strokeCap = Paint.Cap.ROUND
+    }
+    val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+
+    val triangle = android.graphics.Path().apply {
+        moveTo(23f * scale, 5f * scale)
+        lineTo(41f * scale, 37f * scale)
+        lineTo(5f * scale, 37f * scale)
+        close()
+    }
+
+    canvas.drawPath(triangle, fillPaint)
+    canvas.drawPath(triangle, strokePaint)
+    canvas.drawLine(23f * scale, 16f * scale, 23f * scale, 27f * scale, markPaint)
+    canvas.drawCircle(23f * scale, 32f * scale, 2.2f * scale, dotPaint)
+
+    return BitmapDrawable(context.resources, bitmap)
+}
+
 private fun createCirclePoints(center: GeoPoint, radiusMeters: Double): List<GeoPoint> {
     val points = mutableListOf<GeoPoint>()
     val earthRadius = 6_371_000.0
@@ -235,4 +323,10 @@ private fun RiskLevel.toHeatmapColor(): Int {
         RiskLevel.Medium -> Color.rgb(249, 128, 70)
         RiskLevel.Low -> Color.rgb(242, 201, 76)
     }
+}
+
+private fun GeoPoint.isSamePointAs(other: GeoPoint?): Boolean {
+    if (other == null) return false
+    return kotlin.math.abs(latitude - other.latitude) < 0.000001 &&
+        kotlin.math.abs(longitude - other.longitude) < 0.000001
 }

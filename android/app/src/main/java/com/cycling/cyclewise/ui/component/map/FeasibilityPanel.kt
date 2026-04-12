@@ -19,7 +19,9 @@ import com.cycling.cyclewise.ui.state.RoutingUiState
 fun FeasibilityPanel(
     feasibilityState: FeasibilityUiState,
     routingState: RoutingUiState,
+    isRouteVisible: Boolean,
     onViewRoute: () -> Unit,
+    onHideRoute: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -45,7 +47,9 @@ fun FeasibilityPanel(
             is FeasibilityUiState.Success -> FeasibilitySuccessPanel(
                 result = feasibilityState.result,
                 routingState = routingState,
-                onViewRoute = onViewRoute
+                isRouteVisible = isRouteVisible,
+                onViewRoute = onViewRoute,
+                onHideRoute = onHideRoute
             )
         }
     }
@@ -55,7 +59,9 @@ fun FeasibilityPanel(
 private fun FeasibilitySuccessPanel(
     result: FeasibilityResponse,
     routingState: RoutingUiState,
-    onViewRoute: () -> Unit
+    isRouteVisible: Boolean,
+    onViewRoute: () -> Unit,
+    onHideRoute: () -> Unit
 ) {
     val label = when {
         result.score >= 75 -> "High feasibility"
@@ -88,12 +94,13 @@ private fun FeasibilitySuccessPanel(
             )
         }
     }
-    Button(onClick = onViewRoute) {
+    Button(
+        onClick = if (isRouteVisible) onHideRoute else onViewRoute
+    ) {
         Text(
             when (routingState) {
                 RoutingUiState.Loading -> "Loading route..."
-                is RoutingUiState.Success -> "Refresh route"
-                else -> "View risk route"
+                else -> if (isRouteVisible) "Hide risk route" else "View risk route"
             }
         )
     }

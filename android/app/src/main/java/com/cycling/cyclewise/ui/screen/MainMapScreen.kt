@@ -65,6 +65,7 @@ fun MainMapScreen(
     var destinationSuggestions by remember { mutableStateOf(emptyList<PlaceCandidate>()) }
     var feasibilityState by remember { mutableStateOf<FeasibilityUiState>(FeasibilityUiState.Empty) }
     var routingState by remember { mutableStateOf<RoutingUiState>(RoutingUiState.Empty) }
+    var isRouteVisible by rememberSaveable { mutableStateOf(false) }
     var routeSegments by remember { mutableStateOf(emptyList<RouteSegment>()) }
     var routeAlerts by remember { mutableStateOf(emptyList<RouteAlert>()) }
     var lastRequest by remember { mutableStateOf<FeasibilityRequest?>(null) }
@@ -144,6 +145,7 @@ fun MainMapScreen(
                 isHeatmapMode = isHeatmapMode,
                 feasibilityState = feasibilityState,
                 routingState = routingState,
+                isRouteVisible = isRouteVisible,
                 heatmapReports = filteredHeatmapReports,
                 selectedHeatmapRisk = selectedHeatmapRisk,
                 onHeatmapRiskChange = { selectedHeatmapRisk = it },
@@ -155,7 +157,9 @@ fun MainMapScreen(
                             .onSuccess { response ->
                                 routeSegments = response.routeSegments
                                 routeAlerts = response.alerts
+                                isRouteVisible = true
                                 routingState = RoutingUiState.Success(response.alerts)
+                                scaffoldState.bottomSheetState.partialExpand()
                             }
                             .onFailure { error ->
                                 routingState = RoutingUiState.Error(
@@ -163,6 +167,9 @@ fun MainMapScreen(
                                 )
                             }
                     }
+                },
+                onHideRoute = {
+                    isRouteVisible = false
                 }
             )
         }
@@ -184,8 +191,8 @@ fun MainMapScreen(
                 userLocation = userLocation,
                 startLocation = selectedStart?.toGeoPoint() ?: userLocation,
                 destinationLocation = selectedDestination?.toGeoPoint(),
-                routeSegments = routeSegments,
-                routeAlerts = routeAlerts,
+                routeSegments = if (isRouteVisible) routeSegments else emptyList(),
+                routeAlerts = if (isRouteVisible) routeAlerts else emptyList(),
                 heatmapReports = filteredHeatmapReports,
                 isHeatmapMode = isHeatmapMode,
                 modifier = Modifier.fillMaxSize()
@@ -233,6 +240,7 @@ fun MainMapScreen(
                     coroutineScope.launch {
                         feasibilityState = FeasibilityUiState.Loading
                         routingState = RoutingUiState.Empty
+                        isRouteVisible = false
                         routeSegments = emptyList()
                         routeAlerts = emptyList()
                         val request = runCatching {
@@ -272,8 +280,8 @@ fun MainMapScreen(
             FilledTonalButton(
                 onClick = { isHeatmapMode = !isHeatmapMode },
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 8.dp)
             ) {
                 Text(if (isHeatmapMode) "Route" else "Heatmap")
             }
