@@ -1,7 +1,19 @@
 try:
-    from Backend.schemas import RouteSegment, RoutingAlert, RoutingRequest, RoutingResponse
+    from Backend.schemas import (
+        HeatmapZone,
+        RouteSegment,
+        RoutingAlert,
+        RoutingRequest,
+        RoutingResponse,
+    )
 except ModuleNotFoundError:
-    from schemas import RouteSegment, RoutingAlert, RoutingRequest, RoutingResponse
+    from schemas import (
+        HeatmapZone,
+        RouteSegment,
+        RoutingAlert,
+        RoutingRequest,
+        RoutingResponse,
+    )
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
@@ -15,10 +27,20 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         alerts_status_message = (
             "Safety alerts are temporarily unavailable. Please review route colors carefully."
         )
+    try:
+        heatmap_zones = build_heatmap_zones(segments)
+        heatmap_status_message = None
+    except Exception:
+        heatmap_zones = []
+        heatmap_status_message = (
+            "Safety heatmap is temporarily unavailable. Please rely on route segment colors."
+        )
     return RoutingResponse(
         route_segments=segments,
         alerts=alerts,
         alerts_status_message=alerts_status_message,
+        heatmap_zones=heatmap_zones,
+        heatmap_status_message=heatmap_status_message,
     )
 
 
@@ -112,3 +134,63 @@ def alert_position_before_segment(coordinates: list[list[float]]) -> list[float]
         round(start[0] + (end[0] - start[0]) * 0.2, 6),
         round(start[1] + (end[1] - start[1]) * 0.2, 6),
     ]
+
+
+def build_heatmap_zones(segments: list[RouteSegment]) -> list[HeatmapZone]:
+    zones = [zone_from_segment(segment) for segment in segments]
+    if not zones:
+        raise ValueError("No risk data available for heatmap rendering.")
+    return merge_overlapping_zones(zones)
+
+
+def zone_from_segment(segment: RouteSegment) -> HeatmapZone:
+    center = midpoint_from_segment(segment.coordinates)
+    radius_m = radius_from_risk(segment.risk_level)
+    intensity = intensity_from_risk(segment.risk_level, segment.is_gap)
+    return HeatmapZone(
+        center=center,
+        radius_m=radius_m,
+        risk_level=segment.risk_level,
+        intensity=intensity,
+    )
+
+
+def midpoint_from_segment(coordinates: list[list[float]]) -> list[float]:
+    start, end = coordinates
+    return [
+        round((start[0] + end[0]) / 2, 6),
+        round((start[1] + end[1]) / 2, 6),
+    ]
+
+
+def radius_from_risk(risk_level: str) -> int:
+    if risk_level == "Red":
+        return 180
+    if risk_level == "Yellow":
+        return 140
+    return 100
+
+
+def intensity_from_risk(risk_level: str, is_gap: bool) -> int:
+    if is_gap:
+        return 100
+    if risk_level == "Red":
+        return 90
+    if risk_level == "Yellow":
+        return 60
+    return 30
+
+
+def merge_overlapping_zones(zones: list[HeatmapZone]) -> list[HeatmapZone]:
+    merged: dict[tuple[float, float], HeatmapZone] = {}
+    for zone in zones:
+        key = (zone.center[0], zone.center[1])
+        existing = merged.get(key)
+        if existing is None or zone_priority(zone) > zone_priority(existing):
+            merged[key] = zone
+    return list(merged.values())
+
+
+def zone_priority(zone: HeatmapZone) -> tuple[int, int]:
+    risk_rank = {"Green": 0, "Yellow": 1, "Red": 2}
+    return (risk_rank[zone.risk_level], zone.intensity)
