@@ -1,4 +1,5 @@
 try:
+    from Backend.database import fetch_all, fetch_scalar
     from Backend.schemas import (
         HeatmapZone,
         RouteSegment,
@@ -7,6 +8,7 @@ try:
         RoutingResponse,
     )
 except ModuleNotFoundError:
+    from database import fetch_all, fetch_scalar
     from schemas import (
         HeatmapZone,
         RouteSegment,
@@ -17,8 +19,11 @@ except ModuleNotFoundError:
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
-    route_points = interpolate_route_points(request)
-    segments = build_route_segments(route_points)
+    segments = fetch_route_segments_from_db(request)
+    if not segments:
+        route_points = interpolate_route_points(request)
+        segments = build_route_segments(route_points)
+
     try:
         alerts = build_route_alerts(segments)
         alerts_status_message = None
@@ -27,6 +32,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         alerts_status_message = (
             "Safety alerts are temporarily unavailable. Please review route colors carefully."
         )
+
     try:
         heatmap_zones = build_heatmap_zones(segments)
         heatmap_status_message = None
@@ -35,6 +41,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         heatmap_status_message = (
             "Safety heatmap is temporarily unavailable. Please rely on route segment colors."
         )
+
     return RoutingResponse(
         route_segments=segments,
         alerts=alerts,
@@ -42,6 +49,77 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         heatmap_zones=heatmap_zones,
         heatmap_status_message=heatmap_status_message,
     )
+
+
+def has_routing_data() -> bool:
+    query = "SELECT COUNT(*) > 0 FROM ridesmart.road_segment"
+    try:
+        return bool(fetch_scalar(query))
+    except Exception:
+        return False
+
+
+def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
+    if not has_routing_data():
+        return []
+
+    query = """
+        WITH route_line AS (
+            SELECT ST_SetSRID(
+                ST_MakeLine(
+                    ST_MakePoint(:start_lng, :start_lat),
+                    ST_MakePoint(:end_lng, :end_lat)
+                ),
+                4326
+            ) AS geom
+        )
+        SELECT
+            rs.segment_id::text AS segment_id,
+            COALESCE(rs.danger_score, 0) AS danger_score,
+            ST_Y(ST_StartPoint(rs.geom)) AS start_lat,
+            ST_X(ST_StartPoint(rs.geom)) AS start_lng,
+            ST_Y(ST_EndPoint(rs.geom)) AS end_lat,
+            ST_X(ST_EndPoint(rs.geom)) AS end_lng,
+            EXISTS (
+                SELECT 1
+                FROM ridesmart.lane_gap lg
+                WHERE ST_DWithin(lg.geom::geography, rs.geom::geography, 60)
+            ) AS has_gap
+        FROM ridesmart.road_segment rs, route_line r
+        WHERE ST_DWithin(rs.geom::geography, r.geom::geography, 150)
+        ORDER BY ST_Distance(
+            ST_StartPoint(rs.geom)::geography,
+            ST_StartPoint(r.geom)::geography
+        )
+        LIMIT 8
+    """
+
+    try:
+        rows = fetch_all(
+            query,
+            {
+                "start_lat": request.start_lat,
+                "start_lng": request.start_lng,
+                "end_lat": request.end_lat,
+                "end_lng": request.end_lng,
+            },
+        )
+    except Exception:
+        return []
+
+    segments: list[RouteSegment] = []
+    for row in rows:
+        segments.append(
+            RouteSegment(
+                coordinates=[
+                    [round(row["start_lat"], 6), round(row["start_lng"], 6)],
+                    [round(row["end_lat"], 6), round(row["end_lng"], 6)],
+                ],
+                risk_level=risk_level_from_danger_score(float(row["danger_score"])),
+                is_gap=bool(row["has_gap"]),
+            )
+        )
+    return segments
 
 
 def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
@@ -92,6 +170,14 @@ def estimate_segment_risk(segment_index: int) -> str:
 def detect_gap(segment_index: int, risk_level: str) -> bool:
     # Only flag clear gap candidates so we do not create false alerts.
     return segment_index == 1 and risk_level == "Red"
+
+
+def risk_level_from_danger_score(danger_score: float) -> str:
+    if danger_score >= 70:
+        return "Red"
+    if danger_score >= 40:
+        return "Yellow"
+    return "Green"
 
 
 def build_route_alerts(segments: list[RouteSegment]) -> list[RoutingAlert]:
