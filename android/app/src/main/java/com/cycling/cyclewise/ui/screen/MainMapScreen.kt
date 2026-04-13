@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
@@ -39,6 +41,7 @@ import com.cycling.cyclewise.ui.component.map.LocationSearchOverlay
 import com.cycling.cyclewise.ui.component.map.MainMapBottomSheet
 import com.cycling.cyclewise.ui.state.FeasibilityUiState
 import com.cycling.cyclewise.ui.state.RoutingUiState
+import com.cycling.cyclewise.ui.theme.UiTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
@@ -138,7 +141,9 @@ fun MainMapScreen(
         modifier = modifier.fillMaxSize(),
         scaffoldState = scaffoldState,
         sheetPeekHeight = 72.dp,
-        sheetShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+        sheetShape = RoundedCornerShape(topStart = UiTokens.Radius, topEnd = UiTokens.Radius),
+        sheetContainerColor = MaterialTheme.colorScheme.surface,
+        sheetShadowElevation = 10.dp,
         sheetDragHandle = null,
         sheetContent = {
             MainMapBottomSheet(
@@ -279,11 +284,26 @@ fun MainMapScreen(
 
             FilledTonalButton(
                 onClick = { isHeatmapMode = !isHeatmapMode },
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = if (isHeatmapMode) {
+                        MaterialTheme.colorScheme.tertiaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    contentColor = if (isHeatmapMode) {
+                        MaterialTheme.colorScheme.tertiary
+                    } else {
+                        MaterialTheme.colorScheme.onPrimary
+                    }
+                ),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 8.dp)
             ) {
-                Text(if (isHeatmapMode) "Route" else "Heatmap")
+                Text(
+                    if (isHeatmapMode) "Route" else "Heatmap",
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.cycling.cyclewise.ui.component.map
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import com.cycling.cyclewise.data.model.HeatmapReport
 import com.cycling.cyclewise.data.model.RiskLevel
 import com.cycling.cyclewise.ui.state.FeasibilityUiState
 import com.cycling.cyclewise.ui.state.RoutingUiState
+import com.cycling.cyclewise.ui.theme.UiTokens
 
 @Composable
 fun MainMapBottomSheet(
@@ -38,7 +40,7 @@ fun MainMapBottomSheet(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -80,16 +82,20 @@ private fun SheetHandle(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f), RoundedCornerShape(UiTokens.Radius))
+            .border(1.dp, UiTokens.TechLine.copy(alpha = 0.65f), RoundedCornerShape(UiTokens.Radius))
+            .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.14f)
                 .background(
-                    MaterialTheme.colorScheme.outlineVariant,
-                    RoundedCornerShape(8.dp)
+                    UiTokens.BrandGlow.copy(alpha = 0.56f),
+                    RoundedCornerShape(UiTokens.Radius)
                 )
                 .padding(vertical = 2.dp)
         )
@@ -98,14 +104,20 @@ private fun SheetHandle(
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
+                text = if (title.contains("Heatmap")) "SAFETY LAYER" else "TRIP INTELLIGENCE",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = UiTokens.InkMuted
             )
         }
     }

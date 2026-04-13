@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.data.model.PlaceCandidate
+import com.cycling.cyclewise.ui.theme.UiTokens
 
 @Composable
 fun LocationSearchOverlay(
@@ -50,14 +52,48 @@ fun LocationSearchOverlay(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(UiTokens.LiftedShadow, RoundedCornerShape(UiTokens.Radius)),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.padding(0.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier
+                .border(1.dp, Color.White, RoundedCornerShape(UiTokens.Radius))
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(UiTokens.Radius))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "AI route decision",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    "OSM live",
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                        .border(1.dp, UiTokens.TechLine, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -93,12 +129,19 @@ fun LocationSearchOverlay(
                 Button(
                     modifier = Modifier
                         .height(48.dp)
-                        .width(118.dp),
+                        .width(126.dp),
                     shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
                     onClick = onEvaluate,
                     enabled = !isEvaluating
                 ) {
-                    Text(if (isEvaluating) "..." else "Evaluate")
+                    Text(
+                        if (isEvaluating) "..." else "Evaluate",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
             SuggestionList(
@@ -107,6 +150,10 @@ fun LocationSearchOverlay(
             )
             Text(
                 text = locationStatus,
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -126,8 +173,7 @@ private fun CompactSearchField(
     Row(
         modifier = modifier
             .height(48.dp)
-            .shadow(2.dp, RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -170,9 +216,9 @@ private fun LocateButton(
         onClick = onClick,
         modifier = modifier
             .size(48.dp)
-            .shadow(4.dp, RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .shadow(UiTokens.SoftShadow, RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(24.dp))
+            .border(1.dp, UiTokens.TechLine, RoundedCornerShape(24.dp))
     ) {
         LocateIcon()
     }
@@ -231,7 +277,7 @@ private fun SuggestionList(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .shadow(3.dp, RoundedCornerShape(8.dp))
+                .shadow(UiTokens.SoftShadow, RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
                 .padding(vertical = 4.dp),

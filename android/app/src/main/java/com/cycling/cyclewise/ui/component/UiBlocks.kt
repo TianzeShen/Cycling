@@ -21,9 +21,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.cycling.cyclewise.ui.theme.UiTokens
 
 @Composable
 fun ActionRow(
@@ -35,7 +37,9 @@ fun ActionRow(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        shape = RoundedCornerShape(UiTokens.Radius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -77,7 +81,10 @@ fun ScoreSummary(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(3.dp, RoundedCornerShape(UiTokens.Radius)),
+        shape = RoundedCornerShape(UiTokens.Radius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
@@ -93,12 +100,20 @@ fun ScoreSummary(
                 Text(
                     text = "$score/100",
                     style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.ExtraBold
                 )
             }
             LinearProgressIndicator(
                 progress = { score / 100f },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                color = when {
+                    score >= 75 -> UiTokens.Safe
+                    score >= 50 -> UiTokens.Caution
+                    else -> UiTokens.Danger
+                },
+                trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
             )
         }
     }
@@ -113,11 +128,12 @@ fun InfoItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(UiTokens.Radius))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(UiTokens.Radius))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Text(
             body,
             style = MaterialTheme.typography.bodyMedium,
@@ -136,6 +152,7 @@ fun StatusPill(
         text = text,
         modifier = modifier
             .background(color.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+            .border(1.dp, color.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         color = color,
         style = MaterialTheme.typography.labelLarge,
