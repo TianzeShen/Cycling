@@ -30,6 +30,7 @@ import com.cycling.cyclewise.ui.screen.ReportIssueScreen
 @Composable
 fun CycleWiseApp() {
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.Map) }
+    var isMapPanelVisible by rememberSaveable { mutableStateOf(false) }
     val navItems = listOf(
         AppScreen.Map,
         AppScreen.Report,
@@ -38,36 +39,44 @@ fun CycleWiseApp() {
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                navItems.forEach { screen ->
-                    NavigationBarItem(
-                        selected = currentScreen == screen,
-                        onClick = { currentScreen = screen },
-                        label = { Text(screen.navLabel) },
-                        icon = {
-                            NavGlyph(
-                                screen = screen,
-                                selected = currentScreen == screen
+            if (currentScreen != AppScreen.Map || !isMapPanelVisible) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    navItems.forEach { screen ->
+                        NavigationBarItem(
+                            selected = currentScreen == screen,
+                            onClick = {
+                                currentScreen = screen
+                                if (screen != AppScreen.Map) {
+                                    isMapPanelVisible = false
+                                }
+                            },
+                            label = { Text(screen.navLabel) },
+                            icon = {
+                                NavGlyph(
+                                    screen = screen,
+                                    selected = currentScreen == screen
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    )
+                    }
                 }
             }
         }
     ) { innerPadding ->
         when (currentScreen) {
             AppScreen.Map -> MainMapScreen(
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier.padding(innerPadding),
+                onBottomPanelVisibilityChange = { isMapPanelVisible = it }
             )
 
             AppScreen.Report -> ReportIssueScreen(

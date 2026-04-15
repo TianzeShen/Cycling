@@ -6,10 +6,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +36,7 @@ fun MainMapBottomSheet(
     heatmapReports: List<HeatmapReport>,
     selectedHeatmapRisk: RiskLevel?,
     onHeatmapRiskChange: (RiskLevel?) -> Unit,
+    onClose: () -> Unit,
     onViewRoute: () -> Unit,
     onHideRoute: () -> Unit,
     modifier: Modifier = Modifier
@@ -50,7 +55,8 @@ fun MainMapBottomSheet(
                     "Existing community reports near the current map area"
                 } else {
                     "Enter a destination to assess your ride"
-                }
+                },
+                onClose = onClose
             )
         }
         if (isHeatmapMode) {
@@ -79,6 +85,7 @@ fun MainMapBottomSheet(
 private fun SheetHandle(
     title: String,
     subtitle: String,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -90,15 +97,37 @@ private fun SheetHandle(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.14f)
-                .background(
-                    UiTokens.BrandGlow.copy(alpha = 0.56f),
-                    RoundedCornerShape(UiTokens.Radius)
-                )
-                .padding(vertical = 2.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .width(42.dp)
+                    .background(
+                        UiTokens.BrandGlow.copy(alpha = 0.56f),
+                        RoundedCornerShape(UiTokens.Radius)
+                    )
+                    .padding(vertical = 2.dp)
+            )
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Text(
+                        text = "x",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(2.dp)

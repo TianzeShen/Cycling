@@ -4,7 +4,9 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetScaffold
@@ -52,12 +54,14 @@ private val MonashClaytonCenter = GeoPoint(-37.9110, 145.1340)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainMapScreen(
+    onBottomPanelVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scaffoldState = rememberBottomSheetScaffoldState()
     val coroutineScope = rememberCoroutineScope()
     var isHeatmapMode by rememberSaveable { mutableStateOf(false) }
+    var isBottomPanelVisible by rememberSaveable { mutableStateOf(false) }
     var selectedHeatmapRisk by rememberSaveable { mutableStateOf<RiskLevel?>(null) }
     var startPoint by rememberSaveable { mutableStateOf("") }
     var destination by rememberSaveable { mutableStateOf("") }
@@ -77,6 +81,10 @@ fun MainMapScreen(
         MockCyclingData.heatmapReports.filter { report ->
             selectedHeatmapRisk == null || report.riskLevel == selectedHeatmapRisk
         }
+    }
+
+    LaunchedEffect(isBottomPanelVisible) {
+        onBottomPanelVisibilityChange(isBottomPanelVisible)
     }
 
     fun updateUserLocation(location: GeoPoint?) {
@@ -140,43 +148,53 @@ fun MainMapScreen(
     BottomSheetScaffold(
         modifier = modifier.fillMaxSize(),
         scaffoldState = scaffoldState,
-        sheetPeekHeight = 72.dp,
+        sheetPeekHeight = if (isBottomPanelVisible) 72.dp else 0.dp,
         sheetShape = RoundedCornerShape(topStart = UiTokens.Radius, topEnd = UiTokens.Radius),
         sheetContainerColor = MaterialTheme.colorScheme.surface,
         sheetShadowElevation = 10.dp,
         sheetDragHandle = null,
         sheetContent = {
-            MainMapBottomSheet(
-                isHeatmapMode = isHeatmapMode,
-                feasibilityState = feasibilityState,
-                routingState = routingState,
-                isRouteVisible = isRouteVisible,
-                heatmapReports = filteredHeatmapReports,
-                selectedHeatmapRisk = selectedHeatmapRisk,
-                onHeatmapRiskChange = { selectedHeatmapRisk = it },
-                onViewRoute = {
-                    val request = lastRequest ?: return@MainMapBottomSheet
-                    coroutineScope.launch {
-                        routingState = RoutingUiState.Loading
-                        runCatching { CyclingApiClient.recommendRoute(request) }
-                            .onSuccess { response ->
-                                routeSegments = response.routeSegments
-                                routeAlerts = response.alerts
-                                isRouteVisible = true
-                                routingState = RoutingUiState.Success(response.alerts)
-                                scaffoldState.bottomSheetState.partialExpand()
-                            }
-                            .onFailure { error ->
-                                routingState = RoutingUiState.Error(
-                                    error.message ?: "Route recommendation failed."
-                                )
-                            }
+            if (isBottomPanelVisible) {
+                MainMapBottomSheet(
+                    isHeatmapMode = isHeatmapMode,
+                    feasibilityState = feasibilityState,
+                    routingState = routingState,
+                    isRouteVisible = isRouteVisible,
+                    heatmapReports = filteredHeatmapReports,
+                    selectedHeatmapRisk = selectedHeatmapRisk,
+                    onHeatmapRiskChange = { selectedHeatmapRisk = it },
+                    onClose = {
+                        isBottomPanelVisible = false
+                        coroutineScope.launch {
+                            scaffoldState.bottomSheetState.partialExpand()
+                        }
+                    },
+                    onViewRoute = {
+                        val request = lastRequest ?: return@MainMapBottomSheet
+                        coroutineScope.launch {
+                            routingState = RoutingUiState.Loading
+                            runCatching { CyclingApiClient.recommendRoute(request) }
+                                .onSuccess { response ->
+                                    routeSegments = response.routeSegments
+                                    routeAlerts = response.alerts
+                                    isRouteVisible = true
+                                    routingState = RoutingUiState.Success(response.alerts)
+                                    scaffoldState.bottomSheetState.partialExpand()
+                                }
+                                .onFailure { error ->
+                                    routingState = RoutingUiState.Error(
+                                        error.message ?: "Route recommendation failed."
+                                    )
+                                }
+                        }
+                    },
+                    onHideRoute = {
+                        isRouteVisible = false
                     }
-                },
-                onHideRoute = {
-                    isRouteVisible = false
-                }
-            )
+                )
+            } else {
+                Spacer(modifier = Modifier.height(0.dp))
+            }
         }
     ) { innerPadding ->
         Box(
@@ -242,6 +260,7 @@ fun MainMapScreen(
                     }
                 },
                 onEvaluate = {
+                    isBottomPanelVisible = true
                     coroutineScope.launch {
                         feasibilityState = FeasibilityUiState.Loading
                         routingState = RoutingUiState.Empty
@@ -283,7 +302,14 @@ fun MainMapScreen(
             )
 
             FilledTonalButton(
-                onClick = { isHeatmapMode = !isHeatmapMode },
+                onClick = {
+                    val nextHeatmapMode = !isHeatmapMode
+                    isHeatmapMode = nextHeatmapMode
+                    isBottomPanelVisible = nextHeatmapMode
+                    coroutineScope.launch {
+                        scaffoldState.bottomSheetState.partialExpand()
+                    }
+                },
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = if (isHeatmapMode) {
                         MaterialTheme.colorScheme.tertiaryContainer
