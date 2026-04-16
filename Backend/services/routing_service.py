@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+from time import perf_counter
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -27,20 +29,46 @@ OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org
 OSRM_PRIMARY_PROFILE = os.getenv("RIDESMART_OSRM_PROFILE", "bike")
 OSRM_FALLBACK_PROFILE = os.getenv("RIDESMART_OSRM_FALLBACK_PROFILE", "driving")
 OSRM_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_OSRM_TIMEOUT", "6"))
+logger = logging.getLogger(__name__)
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
+    total_start = perf_counter()
+
+    osrm_start = perf_counter()
     route_points = fetch_osrm_route_points(request)
+    logger.info("routing.osrm_lookup_ms=%.1f", (perf_counter() - osrm_start) * 1000)
+
     if route_points:
+        build_start = perf_counter()
         segments = build_route_segments(route_points)
+        logger.info(
+            "routing.segment_build_from_osrm_ms=%.1f",
+            (perf_counter() - build_start) * 1000,
+        )
     else:
+        db_start = perf_counter()
         segments = fetch_route_segments_from_db(request)
+        logger.info(
+            "routing.db_route_lookup_ms=%.1f",
+            (perf_counter() - db_start) * 1000,
+        )
         if not segments:
+            fallback_start = perf_counter()
             route_points = interpolate_route_points(request)
             segments = build_route_segments(route_points)
+            logger.info(
+                "routing.fallback_route_build_ms=%.1f",
+                (perf_counter() - fallback_start) * 1000,
+            )
 
     try:
+        alerts_start = perf_counter()
         alerts = build_route_alerts(segments)
+        logger.info(
+            "routing.alerts_build_ms=%.1f",
+            (perf_counter() - alerts_start) * 1000,
+        )
         alerts_status_message = None
     except Exception:
         alerts = []
@@ -49,13 +77,26 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         )
 
     try:
+        heatmap_start = perf_counter()
         heatmap_zones = build_heatmap_zones(segments)
+        logger.info(
+            "routing.heatmap_build_ms=%.1f",
+            (perf_counter() - heatmap_start) * 1000,
+        )
         heatmap_status_message = None
     except Exception:
         heatmap_zones = []
         heatmap_status_message = (
             "Safety heatmap is temporarily unavailable. Please rely on route segment colors."
         )
+
+    logger.info(
+        "routing.total_ms=%.1f segments=%d alerts=%d heatmap_zones=%d",
+        (perf_counter() - total_start) * 1000,
+        len(segments),
+        len(alerts),
+        len(heatmap_zones),
+    )
 
     return RoutingResponse(
         route_segments=segments,
