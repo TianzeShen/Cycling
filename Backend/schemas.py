@@ -89,3 +89,20 @@ class RoutingResponse(BaseModel):
     alerts_status_message: str | None = None
     heatmap_zones: list[HeatmapZone] = Field(default_factory=list)
     heatmap_status_message: str | None = None
+
+
+class MelbourneHeatmapRegion(BaseModel):
+    sa2_code: str
+    suburb_name: str
+    score: int = Field(..., ge=0, le=100)
+    risk_level: RiskLevel
+    intensity: int = Field(..., ge=0, le=100)
+    working_population_ratio: float
+    short_commute_pct: float
+    zero_car_household_pct: float
+    geometry: dict | None = None
+
+
+class MelbourneHeatmapResponse(BaseModel):
+    regions: list[MelbourneHeatmapRegion] = Field(default_factory=list)
+    status_message: str | None = None

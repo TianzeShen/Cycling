@@ -8,7 +8,7 @@ from sqlalchemy.engine import Connection
 
 DATABASE_URL = os.getenv(
     "RIDESMART_DATABASE_URL",
-    "postgresql+psycopg2://postgres:5120@localhost:5432/Cycling",
+    "postgresql+psycopg2://postgres:5120@localhost:5432/postgres",
 )
 
 # The tables live under the `ridesmart` schema instead of `public`.
