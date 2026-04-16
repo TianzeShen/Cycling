@@ -2,8 +2,8 @@ import json
 import logging
 import os
 from time import perf_counter
-from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 try:
     from Backend.database import fetch_all, fetch_one, fetch_scalar
@@ -25,26 +25,26 @@ except ModuleNotFoundError:
     )
 
 
-OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org")
-OSRM_PRIMARY_PROFILE = os.getenv("RIDESMART_OSRM_PROFILE", "bike")
-OSRM_FALLBACK_PROFILE = os.getenv("RIDESMART_OSRM_FALLBACK_PROFILE", "driving")
-OSRM_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_OSRM_TIMEOUT", "6"))
-USE_OSRM_ROUTING = os.getenv("RIDESMART_USE_OSRM", "false").lower() == "true"
+ORS_BASE_URL = os.getenv("RIDESMART_ORS_URL", "https://api.openrouteservice.org")
+ORS_PROFILE = os.getenv("RIDESMART_ORS_PROFILE", "cycling-regular")
+ORS_API_KEY = os.getenv("RIDESMART_ORS_API_KEY", "")
+ORS_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_ORS_TIMEOUT", "12"))
+USE_ORS_ROUTING = os.getenv("RIDESMART_USE_ORS", "true").lower() == "true"
 logger = logging.getLogger(__name__)
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
     total_start = perf_counter()
 
-    osrm_start = perf_counter()
-    route_points = fetch_osrm_route_points(request)
-    logger.info("routing.osrm_lookup_ms=%.1f", (perf_counter() - osrm_start) * 1000)
+    ors_start = perf_counter()
+    route_points = fetch_ors_route_points(request)
+    logger.info("routing.ors_lookup_ms=%.1f", (perf_counter() - ors_start) * 1000)
 
     if route_points:
         build_start = perf_counter()
         segments = build_route_segments(route_points)
         logger.info(
-            "routing.segment_build_from_osrm_ms=%.1f",
+            "routing.segment_build_from_ors_ms=%.1f",
             (perf_counter() - build_start) * 1000,
         )
     else:
@@ -108,41 +108,52 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     )
 
 
-def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
-    if not USE_OSRM_ROUTING:
-        logger.warning("routing.osrm_disabled_using_local_fallback=true")
+def fetch_ors_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    if not USE_ORS_ROUTING:
+        logger.warning("routing.ors_disabled_using_local_fallback=true")
         return []
-
-    route_points = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
-    if route_points:
-        return route_points
-    if OSRM_FALLBACK_PROFILE == OSRM_PRIMARY_PROFILE:
+    if not ORS_API_KEY:
+        logger.warning("routing.ors_missing_api_key_using_local_fallback=true")
         return []
-    return request_osrm_route(request, OSRM_FALLBACK_PROFILE)
+    return request_ors_route(request, ORS_PROFILE)
 
 
-def request_osrm_route(
+def request_ors_route(
     request: RoutingRequest, profile: str
 ) -> list[tuple[float, float]]:
-    coordinates = (
-        f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
-    )
-    url = (
-        f"{OSRM_BASE_URL.rstrip('/')}/route/v1/{profile}/{coordinates}"
-        "?overview=full&geometries=geojson&steps=false"
+    url = f"{ORS_BASE_URL.rstrip('/')}/v2/directions/{profile}/geojson"
+    post_body = {
+        "coordinates": [
+            [request.start_lng, request.start_lat],
+            [request.end_lng, request.end_lat],
+        ]
+    }
+    request_bytes = json.dumps(post_body).encode("utf-8")
+    ors_request = Request(
+        url=url,
+        data=request_bytes,
+        headers={
+            "Authorization": ORS_API_KEY,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
     )
 
     try:
-        with urlopen(url, timeout=OSRM_TIMEOUT_SECONDS) as response:
+        with urlopen(ors_request, timeout=ORS_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        logger.warning("routing.ors_http_error_code=%s", exc.code)
+        return []
     except (URLError, TimeoutError, ValueError):
         return []
 
-    routes = payload.get("routes", [])
-    if not routes:
+    features = payload.get("features", [])
+    if not features:
         return []
 
-    geometry = routes[0].get("geometry", {})
+    geometry = features[0].get("geometry", {})
     coordinates_data = geometry.get("coordinates", [])
     route_points = [
         (float(coordinate[1]), float(coordinate[0]))
