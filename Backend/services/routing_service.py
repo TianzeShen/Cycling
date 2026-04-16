@@ -271,12 +271,14 @@ def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float
 
 
 def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteSegment]:
+    segment_contexts = fetch_segment_contexts_from_db(route_points)
     segments: list[RouteSegment] = []
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        estimated_risk_level = estimate_segment_risk(start, end, index)
-        is_gap = detect_gap(start, end, index, estimated_risk_level)
+        segment_context = segment_contexts.get(index)
+        estimated_risk_level = estimate_segment_risk(start, end, index, segment_context)
+        is_gap = detect_gap(start, end, index, estimated_risk_level, segment_context)
         segments.append(
             RouteSegment(
                 coordinates=[
@@ -290,9 +292,101 @@ def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteS
     return segments
 
 
+def fetch_segment_contexts_from_db(
+    route_points: list[tuple[float, float]]
+) -> dict[int, dict[str, float | bool | None]]:
+    if not has_routing_data() or len(route_points) < 2:
+        return {}
+
+    segment_selects: list[str] = []
+    params: dict[str, float | int] = {}
+
+    for index in range(len(route_points) - 1):
+        start = route_points[index]
+        end = route_points[index + 1]
+        segment_selects.append(
+            f"""
+            SELECT
+                {index} AS segment_index,
+                ST_SetSRID(
+                    ST_MakeLine(
+                        ST_MakePoint(:start_lng_{index}, :start_lat_{index}),
+                        ST_MakePoint(:end_lng_{index}, :end_lat_{index})
+                    ),
+                    4326
+                ) AS geom
+            """
+        )
+        params[f"start_lat_{index}"] = start[0]
+        params[f"start_lng_{index}"] = start[1]
+        params[f"end_lat_{index}"] = end[0]
+        params[f"end_lng_{index}"] = end[1]
+
+    query = f"""
+        WITH candidate_segments AS (
+            {" UNION ALL ".join(segment_selects)}
+        ),
+        road_stats AS (
+            SELECT
+                cs.segment_index,
+                AVG(COALESCE(rs.danger_score, 0)) AS average_danger_score
+            FROM candidate_segments cs
+            LEFT JOIN ridesmart.road_segment rs
+              ON ST_DWithin(rs.geom::geography, cs.geom::geography, 60)
+            GROUP BY cs.segment_index
+        ),
+        lane_stats AS (
+            SELECT
+                cs.segment_index,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(cl.is_continuous, false) = false
+                ) AS broken_lane_count,
+                COUNT(cl.lane_id) AS matched_lane_count
+            FROM candidate_segments cs
+            LEFT JOIN ridesmart.cycling_lane cl
+              ON ST_DWithin(cl.geom::geography, cs.geom::geography, 40)
+            GROUP BY cs.segment_index
+        )
+        SELECT
+            cs.segment_index,
+            road_stats.average_danger_score,
+            COALESCE(lane_stats.broken_lane_count, 0) AS broken_lane_count,
+            COALESCE(lane_stats.matched_lane_count, 0) AS matched_lane_count
+        FROM candidate_segments cs
+        LEFT JOIN road_stats
+          ON road_stats.segment_index = cs.segment_index
+        LEFT JOIN lane_stats
+          ON lane_stats.segment_index = cs.segment_index
+        ORDER BY cs.segment_index
+    """
+
+    try:
+        rows = fetch_all(query, params)
+    except Exception:
+        return {}
+
+    return {
+        int(row["segment_index"]): {
+            "average_danger_score": row["average_danger_score"],
+            "matched_lane_count": float(row["matched_lane_count"]),
+            "has_gap": int(row["broken_lane_count"]) > 0
+            if int(row["matched_lane_count"]) > 0
+            else None,
+        }
+        for row in rows
+    }
+
+
 def estimate_segment_risk(
-    start: tuple[float, float], end: tuple[float, float], segment_index: int
+    start: tuple[float, float],
+    end: tuple[float, float],
+    segment_index: int,
+    segment_context: dict[str, float | bool | None] | None = None,
 ) -> str:
+    db_risk_level = risk_level_from_segment_context(segment_context)
+    if db_risk_level:
+        return db_risk_level
+
     db_risk_level = fetch_segment_risk_from_db(start, end)
     if db_risk_level:
         return db_risk_level
@@ -345,7 +439,11 @@ def detect_gap(
     end: tuple[float, float],
     segment_index: int,
     risk_level: str,
+    segment_context: dict[str, float | bool | None] | None = None,
 ) -> bool:
+    if segment_context is not None and segment_context.get("has_gap") is not None:
+        return bool(segment_context["has_gap"])
+
     gap_flag = fetch_gap_flag_from_db(start, end)
     if gap_flag is not None:
         return gap_flag
@@ -396,6 +494,18 @@ def fetch_one_safe(query: str, params: dict[str, float]) -> dict | None:
         return fetch_one(query, params)
     except Exception:
         return None
+
+
+def risk_level_from_segment_context(
+    segment_context: dict[str, float | bool | None] | None,
+) -> str | None:
+    if segment_context is None:
+        return None
+
+    average_danger_score = segment_context.get("average_danger_score")
+    if average_danger_score is None:
+        return None
+    return risk_level_from_danger_score(float(average_danger_score))
 
 
 def segment_risk_level(base_risk_level: str, is_gap: bool) -> str:
