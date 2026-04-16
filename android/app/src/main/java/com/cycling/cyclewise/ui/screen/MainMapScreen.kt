@@ -3,16 +3,20 @@ package com.cycling.cyclewise.ui.screen
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetScaffold
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberBottomSheetScaffoldState
@@ -26,7 +30,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.data.api.CyclingApiClient
 import com.cycling.cyclewise.data.api.GeocodingClient
@@ -62,6 +71,7 @@ fun MainMapScreen(
     val coroutineScope = rememberCoroutineScope()
     var isHeatmapMode by rememberSaveable { mutableStateOf(false) }
     var isBottomPanelVisible by rememberSaveable { mutableStateOf(false) }
+    var wasBottomPanelVisibleBeforeHeatmap by rememberSaveable { mutableStateOf(false) }
     var selectedHeatmapRisk by rememberSaveable { mutableStateOf<RiskLevel?>(null) }
     var startPoint by rememberSaveable { mutableStateOf("") }
     var destination by rememberSaveable { mutableStateOf("") }
@@ -301,37 +311,76 @@ fun MainMapScreen(
                     .padding(16.dp)
             )
 
-            FilledTonalButton(
+            HeatmapToolButton(
+                text = if (isHeatmapMode) "Route" else "Heatmap",
+                active = isHeatmapMode,
                 onClick = {
                     val nextHeatmapMode = !isHeatmapMode
+                    if (nextHeatmapMode) {
+                        wasBottomPanelVisibleBeforeHeatmap = isBottomPanelVisible
+                    }
                     isHeatmapMode = nextHeatmapMode
-                    isBottomPanelVisible = nextHeatmapMode
+                    isBottomPanelVisible = if (nextHeatmapMode) {
+                        true
+                    } else {
+                        wasBottomPanelVisibleBeforeHeatmap
+                    }
                     coroutineScope.launch {
                         scaffoldState.bottomSheetState.partialExpand()
                     }
                 },
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = if (isHeatmapMode) {
-                        MaterialTheme.colorScheme.tertiaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                    contentColor = if (isHeatmapMode) {
-                        MaterialTheme.colorScheme.tertiary
-                    } else {
-                        MaterialTheme.colorScheme.onPrimary
-                    }
-                ),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 8.dp)
-            ) {
-                Text(
-                    if (isHeatmapMode) "Route" else "Heatmap",
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-            }
+            )
         }
+    }
+}
+
+@Composable
+private fun HeatmapToolButton(
+    text: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "heatmap_tool_scale")
+    val glow = if (active) Color(0xFF38BDF8) else Color(0xFF2563EB)
+
+    Box(
+        modifier = modifier
+            .width(106.dp)
+            .height(46.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(18.dp, RoundedCornerShape(8.dp), ambientColor = glow.copy(alpha = 0.36f), spotColor = glow.copy(alpha = 0.44f))
+            .background(
+                Brush.horizontalGradient(
+                    if (active) {
+                        listOf(Color.White.copy(alpha = 0.92f), Color(0xFFE0F2FE).copy(alpha = 0.92f))
+                    } else {
+                        listOf(Color(0xFF2563EB), Color(0xFF0EA5E9))
+                    }
+                ),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (active) Color(0xFF0369A1) else Color.White,
+            fontWeight = FontWeight.ExtraBold,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
 

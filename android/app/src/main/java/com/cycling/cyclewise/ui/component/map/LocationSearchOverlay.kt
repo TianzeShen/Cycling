@@ -1,9 +1,12 @@
 package com.cycling.cyclewise.ui.component.map
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,19 +19,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -54,15 +60,32 @@ fun LocationSearchOverlay(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(UiTokens.LiftedShadow, RoundedCornerShape(UiTokens.Radius)),
+            .shadow(22.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x552563EB), spotColor = Color(0x332563EB)),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.78f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
-                .border(1.dp, Color.White, RoundedCornerShape(UiTokens.Radius))
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(UiTokens.Radius))
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.92f),
+                            Color(0xFFEFF6FF).copy(alpha = 0.76f)
+                        )
+                    )
+                )
+                .border(
+                    1.dp,
+                    Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.95f),
+                            Color(0xFF93C5FD).copy(alpha = 0.58f)
+                        )
+                    ),
+                    RoundedCornerShape(8.dp)
+                )
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -80,8 +103,8 @@ fun LocationSearchOverlay(
                 Text(
                     "OSM live",
                     modifier = Modifier
-                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
-                        .border(1.dp, UiTokens.TechLine, RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.58f), RoundedCornerShape(8.dp))
+                        .border(1.dp, UiTokens.TechLine.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelSmall,
@@ -92,7 +115,12 @@ fun LocationSearchOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(3.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF2563EB), Color(0xFF0EA5E9), Color(0xFF93C5FD))
+                        ),
+                        RoundedCornerShape(8.dp)
+                    )
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -126,23 +154,14 @@ fun LocationSearchOverlay(
                     keyboardImeAction = ImeAction.Done,
                     modifier = Modifier.weight(1f)
                 )
-                Button(
+                GradientActionButton(
                     modifier = Modifier
                         .height(48.dp)
                         .width(126.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
                     onClick = onEvaluate,
-                    enabled = !isEvaluating
-                ) {
-                    Text(
-                        if (isEvaluating) "..." else "Evaluate",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                    enabled = !isEvaluating,
+                    text = if (isEvaluating) "..." else "Evaluate"
+                )
             }
             SuggestionList(
                 suggestions = destinationSuggestions,
@@ -152,7 +171,7 @@ fun LocationSearchOverlay(
                 text = locationStatus,
                 modifier = Modifier
                     .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                    .border(1.dp, UiTokens.TechLine.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -173,8 +192,8 @@ private fun CompactSearchField(
     Row(
         modifier = modifier
             .height(48.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = 0.64f), RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.92f), RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -212,13 +231,21 @@ private fun LocateButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, label = "locate_scale")
     IconButton(
         onClick = onClick,
         modifier = modifier
             .size(48.dp)
-            .shadow(UiTokens.SoftShadow, RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(24.dp))
-            .border(1.dp, UiTokens.TechLine, RoundedCornerShape(24.dp))
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(14.dp, RoundedCornerShape(24.dp), ambientColor = Color(0x332563EB), spotColor = Color(0x442563EB))
+            .background(Color.White.copy(alpha = 0.82f), RoundedCornerShape(24.dp))
+            .border(1.dp, UiTokens.TechLine.copy(alpha = 0.82f), RoundedCornerShape(24.dp)),
+        interactionSource = interactionSource
     ) {
         LocateIcon()
     }
@@ -277,9 +304,9 @@ private fun SuggestionList(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .shadow(UiTokens.SoftShadow, RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                .shadow(12.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x222563EB), spotColor = Color(0x332563EB))
+                .background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(8.dp))
+                .border(1.dp, UiTokens.TechLine.copy(alpha = 0.70f), RoundedCornerShape(8.dp))
                 .padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
@@ -295,5 +322,47 @@ private fun SuggestionList(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun GradientActionButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, label = "evaluate_scale")
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled) 1f else 0.62f
+            }
+            .shadow(14.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x552563EB), spotColor = Color(0x662563EB))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Color(0xFF2563EB), Color(0xFF0EA5E9), Color(0xFF38BDF8))
+                ),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = Color.White,
+            fontWeight = FontWeight.ExtraBold,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }

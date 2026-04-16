@@ -1,5 +1,7 @@
 package com.cycling.cyclewise.ui.navigation
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -20,8 +22,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.ui.screen.MainMapScreen
 import com.cycling.cyclewise.ui.screen.ProfileScreen
@@ -73,19 +77,24 @@ fun CycleWiseApp() {
             }
         }
     ) { innerPadding ->
-        when (currentScreen) {
-            AppScreen.Map -> MainMapScreen(
-                modifier = Modifier.padding(innerPadding),
-                onBottomPanelVisibilityChange = { isMapPanelVisible = it }
-            )
+        Crossfade(
+            targetState = currentScreen,
+            label = "screen_transition"
+        ) { screen ->
+            when (screen) {
+                AppScreen.Map -> MainMapScreen(
+                    modifier = Modifier.padding(innerPadding),
+                    onBottomPanelVisibilityChange = { isMapPanelVisible = it }
+                )
 
-            AppScreen.Report -> ReportIssueScreen(
-                modifier = Modifier.padding(innerPadding)
-            )
+                AppScreen.Report -> ReportIssueScreen(
+                    modifier = Modifier.padding(innerPadding)
+                )
 
-            AppScreen.Profile -> ProfileScreen(
-                modifier = Modifier.padding(innerPadding)
-            )
+                AppScreen.Profile -> ProfileScreen(
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
         }
     }
 }
@@ -101,12 +110,34 @@ private fun NavGlyph(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.08f else 1f,
+        label = "nav_icon_scale"
+    )
 
     Box(
         modifier = modifier
             .size(30.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .background(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+                if (selected) {
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary,
+                            Color(0xFF0EA5E9)
+                        )
+                    )
+                } else {
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    )
+                },
                 RoundedCornerShape(8.dp)
             ),
         contentAlignment = Alignment.Center

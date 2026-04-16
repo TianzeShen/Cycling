@@ -17,6 +17,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,20 +72,29 @@ fun ProfileScreen(
 @Composable
 private fun ProfileHeader() {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(16.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x332563EB), spotColor = Color(0x442563EB)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color.White, Color(0xFFEFF6FF), Color(0xFFE0F2FE))
+                    )
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.88f), RoundedCornerShape(8.dp))
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = "RIDER IMPACT",
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
-                    .border(1.dp, UiTokens.TechLine, RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.66f), RoundedCornerShape(8.dp))
+                    .border(1.dp, UiTokens.TechLine.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelMedium,
@@ -116,7 +127,7 @@ private fun ImpactBadge(
     Column(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 9.dp)
             .width(112.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -133,13 +144,21 @@ private fun StatCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+        modifier = modifier
+            .shadow(10.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x182563EB), spotColor = Color(0x262563EB)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.White, Color(0xFFEFF6FF).copy(alpha = 0.82f))
+                    )
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.82f), RoundedCornerShape(8.dp))
+                .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
@@ -159,10 +178,12 @@ private fun CardSection(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(8.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x142563EB), spotColor = Color(0x202563EB)),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.92f)),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -182,7 +203,13 @@ private fun BadgeChip(
     Text(
         text = text,
         modifier = Modifier
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(color.copy(alpha = 0.18f), Color.White.copy(alpha = 0.72f))
+                ),
+                RoundedCornerShape(8.dp)
+            )
+            .border(1.dp, color.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         color = color,
         style = MaterialTheme.typography.labelLarge,
@@ -198,7 +225,13 @@ private fun ActivityLine(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Color(0xFFF8FAFC), Color(0xFFEFF6FF).copy(alpha = 0.78f))
+                ),
+                RoundedCornerShape(8.dp)
+            )
+            .border(1.dp, UiTokens.TechLine.copy(alpha = 0.44f), RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {

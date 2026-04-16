@@ -1,7 +1,11 @@
 package com.cycling.cyclewise.ui.screen
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,15 +17,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.ui.component.StaticScreen
@@ -69,15 +77,13 @@ fun ReportIssueScreen(
             }
         }
         item {
-            Button(
+            PremiumActionButton(
+                text = "Create report",
+                onClick = {},
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(8.dp),
-                onClick = {}
-            ) {
-                Text("Create report")
-            }
+                    .height(52.dp)
+            )
         }
     }
 }
@@ -85,20 +91,29 @@ fun ReportIssueScreen(
 @Composable
 private fun ReportHeader() {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(16.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x332563EB), spotColor = Color(0x442563EB)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color.White, Color(0xFFEFF6FF), Color(0xFFE0F2FE))
+                    )
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.88f), RoundedCornerShape(8.dp))
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = "AI SAFETY REPORT",
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
-                    .border(1.dp, UiTokens.TechLine, RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.66f), RoundedCornerShape(8.dp))
+                    .border(1.dp, UiTokens.TechLine.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelMedium,
@@ -132,7 +147,7 @@ private fun HeroStat(
     Column(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .width(82.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -145,10 +160,12 @@ private fun HeroStat(
 @Composable
 private fun LocationCard() {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(10.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x182563EB), spotColor = Color(0x222563EB)),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.90f)),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -186,8 +203,13 @@ private fun LocationCard() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(130.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFFEFF6FF), Color.White, Color(0xFFE0F2FE))
+                        ),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .border(1.dp, UiTokens.TechLine.copy(alpha = 0.62f), RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -217,10 +239,12 @@ private fun SectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(8.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x142563EB), spotColor = Color(0x202563EB)),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.92f)),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -237,17 +261,33 @@ private fun ReportChip(
     text: String,
     selected: Boolean = false
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, label = "report_chip_scale")
     Text(
         text = text,
         modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .background(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+                if (selected) {
+                    Brush.horizontalGradient(listOf(Color(0xFF2563EB), Color(0xFF0EA5E9)))
+                } else {
+                    Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.88f), Color(0xFFEFF6FF).copy(alpha = 0.72f)))
+                },
                 RoundedCornerShape(8.dp)
             )
             .border(
                 1.dp,
                 if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                 RoundedCornerShape(8.dp)
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {}
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
         color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -265,7 +305,15 @@ private fun SeverityChip(
     Text(
         text = text,
         modifier = modifier
-            .background(color.copy(alpha = if (selected) 0.22f else 0.10f), RoundedCornerShape(8.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        color.copy(alpha = if (selected) 0.24f else 0.10f),
+                        Color.White.copy(alpha = 0.72f)
+                    )
+                ),
+                RoundedCornerShape(8.dp)
+            )
             .border(1.dp, color.copy(alpha = if (selected) 0.80f else 0.25f), RoundedCornerShape(8.dp))
             .padding(vertical = 10.dp, horizontal = 8.dp),
         color = color,
@@ -285,5 +333,37 @@ private fun InfoLine(
     ) {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun PremiumActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, label = "report_action_scale")
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(14.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x442563EB), spotColor = Color(0x552563EB))
+            .background(
+                Brush.horizontalGradient(listOf(Color(0xFF2563EB), Color(0xFF0EA5E9), Color(0xFF38BDF8))),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontWeight = FontWeight.ExtraBold)
     }
 }

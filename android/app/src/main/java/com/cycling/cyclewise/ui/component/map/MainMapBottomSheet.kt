@@ -19,6 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.data.model.HeatmapReport
@@ -44,7 +47,14 @@ fun MainMapBottomSheet(
     LazyColumn(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface),
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.96f),
+                        Color(0xFFEFF6FF).copy(alpha = 0.92f)
+                    )
+                )
+            ),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -91,8 +101,18 @@ private fun SheetHandle(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f), RoundedCornerShape(UiTokens.Radius))
-            .border(1.dp, UiTokens.TechLine.copy(alpha = 0.65f), RoundedCornerShape(UiTokens.Radius))
+            .shadow(12.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x222563EB), spotColor = Color(0x332563EB))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.88f),
+                        Color(0xFFDBEAFE).copy(alpha = 0.72f),
+                        Color(0xFFE0F2FE).copy(alpha = 0.62f)
+                    )
+                ),
+                RoundedCornerShape(8.dp)
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.82f), RoundedCornerShape(8.dp))
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -106,7 +126,9 @@ private fun SheetHandle(
                 modifier = Modifier
                     .width(42.dp)
                     .background(
-                        UiTokens.BrandGlow.copy(alpha = 0.56f),
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF2563EB), Color(0xFF0EA5E9), Color(0xFF93C5FD))
+                        ),
                         RoundedCornerShape(UiTokens.Radius)
                     )
                     .padding(vertical = 2.dp)
@@ -118,6 +140,8 @@ private fun SheetHandle(
                 IconButton(
                     onClick = onClose,
                     modifier = Modifier.size(32.dp)
+                        .background(Color.White.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
+                        .border(1.dp, UiTokens.TechLine.copy(alpha = 0.66f), RoundedCornerShape(8.dp))
                 ) {
                     Text(
                         text = "x",
