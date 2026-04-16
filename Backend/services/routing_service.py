@@ -179,14 +179,18 @@ def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
 
     segments: list[RouteSegment] = []
     for row in rows:
+        is_gap = bool(row["has_gap"])
         segments.append(
             RouteSegment(
                 coordinates=[
                     [round(row["start_lat"], 6), round(row["start_lng"], 6)],
                     [round(row["end_lat"], 6), round(row["end_lng"], 6)],
                 ],
-                risk_level=risk_level_from_danger_score(float(row["danger_score"])),
-                is_gap=bool(row["has_gap"]),
+                risk_level=segment_risk_level(
+                    risk_level_from_danger_score(float(row["danger_score"])),
+                    is_gap,
+                ),
+                is_gap=is_gap,
             )
         )
     return segments
@@ -213,15 +217,15 @@ def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteS
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        risk_level = estimate_segment_risk(start, end, index)
-        is_gap = detect_gap(start, end, index, risk_level)
+        estimated_risk_level = estimate_segment_risk(start, end, index)
+        is_gap = detect_gap(start, end, index, estimated_risk_level)
         segments.append(
             RouteSegment(
                 coordinates=[
                     [round(start[0], 6), round(start[1], 6)],
                     [round(end[0], 6), round(end[1], 6)],
                 ],
-                risk_level=risk_level,
+                risk_level=segment_risk_level(estimated_risk_level, is_gap),
                 is_gap=is_gap,
             )
         )
@@ -334,6 +338,13 @@ def fetch_one_safe(query: str, params: dict[str, float]) -> dict | None:
         return fetch_one(query, params)
     except Exception:
         return None
+
+
+def segment_risk_level(base_risk_level: str, is_gap: bool) -> str:
+    # Any route segment near a non-continuous bike lane should stand out clearly.
+    if is_gap:
+        return "Red"
+    return base_risk_level
 
 
 def risk_level_from_danger_score(danger_score: float) -> str:
