@@ -30,27 +30,28 @@ ORS_PROFILE = os.getenv("RIDESMART_ORS_PROFILE", "cycling-regular")
 ORS_API_KEY = os.getenv("RIDESMART_ORS_API_KEY", "")
 ORS_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_ORS_TIMEOUT", "12"))
 USE_ORS_ROUTING = os.getenv("RIDESMART_USE_ORS", "true").lower() == "true"
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
     total_start = perf_counter()
+    logger.warning("routing.started")
 
     ors_start = perf_counter()
     route_points = fetch_ors_route_points(request)
-    logger.info("routing.ors_lookup_ms=%.1f", (perf_counter() - ors_start) * 1000)
+    logger.warning("routing.ors_lookup_ms=%.1f", (perf_counter() - ors_start) * 1000)
 
     if route_points:
         build_start = perf_counter()
         segments = build_route_segments(route_points)
-        logger.info(
+        logger.warning(
             "routing.segment_build_from_ors_ms=%.1f",
             (perf_counter() - build_start) * 1000,
         )
     else:
         db_start = perf_counter()
         segments = fetch_route_segments_from_db(request)
-        logger.info(
+        logger.warning(
             "routing.db_route_lookup_ms=%.1f",
             (perf_counter() - db_start) * 1000,
         )
@@ -58,7 +59,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             fallback_start = perf_counter()
             route_points = interpolate_route_points(request)
             segments = build_route_segments(route_points)
-            logger.info(
+            logger.warning(
                 "routing.fallback_route_build_ms=%.1f",
                 (perf_counter() - fallback_start) * 1000,
             )
@@ -66,7 +67,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     try:
         alerts_start = perf_counter()
         alerts = build_route_alerts(segments)
-        logger.info(
+        logger.warning(
             "routing.alerts_build_ms=%.1f",
             (perf_counter() - alerts_start) * 1000,
         )
@@ -80,7 +81,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     try:
         heatmap_start = perf_counter()
         heatmap_zones = build_heatmap_zones(segments)
-        logger.info(
+        logger.warning(
             "routing.heatmap_build_ms=%.1f",
             (perf_counter() - heatmap_start) * 1000,
         )
@@ -91,7 +92,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             "Safety heatmap is temporarily unavailable. Please rely on route segment colors."
         )
 
-    logger.info(
+    logger.warning(
         "routing.total_ms=%.1f segments=%d alerts=%d heatmap_zones=%d",
         (perf_counter() - total_start) * 1000,
         len(segments),
