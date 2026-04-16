@@ -1,5 +1,10 @@
+import json
+import os
+from urllib.error import URLError
+from urllib.request import urlopen
+
 try:
-    from Backend.database import fetch_all, fetch_scalar
+    from Backend.database import fetch_all, fetch_one, fetch_scalar
     from Backend.schemas import (
         HeatmapZone,
         RouteSegment,
@@ -8,7 +13,7 @@ try:
         RoutingResponse,
     )
 except ModuleNotFoundError:
-    from database import fetch_all, fetch_scalar
+    from database import fetch_all, fetch_one, fetch_scalar
     from schemas import (
         HeatmapZone,
         RouteSegment,
@@ -18,11 +23,21 @@ except ModuleNotFoundError:
     )
 
 
+OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org")
+OSRM_PRIMARY_PROFILE = os.getenv("RIDESMART_OSRM_PROFILE", "bike")
+OSRM_FALLBACK_PROFILE = os.getenv("RIDESMART_OSRM_FALLBACK_PROFILE", "driving")
+OSRM_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_OSRM_TIMEOUT", "6"))
+
+
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
-    segments = fetch_route_segments_from_db(request)
-    if not segments:
-        route_points = interpolate_route_points(request)
+    route_points = fetch_osrm_route_points(request)
+    if route_points:
         segments = build_route_segments(route_points)
+    else:
+        segments = fetch_route_segments_from_db(request)
+        if not segments:
+            route_points = interpolate_route_points(request)
+            segments = build_route_segments(route_points)
 
     try:
         alerts = build_route_alerts(segments)
@@ -49,6 +64,60 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         heatmap_zones=heatmap_zones,
         heatmap_status_message=heatmap_status_message,
     )
+
+
+def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    route_points = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
+    if route_points:
+        return route_points
+    if OSRM_FALLBACK_PROFILE == OSRM_PRIMARY_PROFILE:
+        return []
+    return request_osrm_route(request, OSRM_FALLBACK_PROFILE)
+
+
+def request_osrm_route(
+    request: RoutingRequest, profile: str
+) -> list[tuple[float, float]]:
+    coordinates = (
+        f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
+    )
+    url = (
+        f"{OSRM_BASE_URL.rstrip('/')}/route/v1/{profile}/{coordinates}"
+        "?overview=full&geometries=geojson&steps=false"
+    )
+
+    try:
+        with urlopen(url, timeout=OSRM_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (URLError, TimeoutError, ValueError):
+        return []
+
+    routes = payload.get("routes", [])
+    if not routes:
+        return []
+
+    geometry = routes[0].get("geometry", {})
+    coordinates_data = geometry.get("coordinates", [])
+    route_points = [
+        (float(coordinate[1]), float(coordinate[0]))
+        for coordinate in coordinates_data
+        if len(coordinate) >= 2
+    ]
+    return compress_route_points(route_points)
+
+
+def compress_route_points(
+    route_points: list[tuple[float, float]], max_points: int = 12
+) -> list[tuple[float, float]]:
+    if len(route_points) <= max_points:
+        return route_points
+
+    compressed = [route_points[0]]
+    for index in range(1, max_points - 1):
+        source_index = round(index * (len(route_points) - 1) / (max_points - 1))
+        compressed.append(route_points[source_index])
+    compressed.append(route_points[-1])
+    return compressed
 
 
 def has_routing_data() -> bool:
@@ -82,8 +151,9 @@ def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
             ST_X(ST_EndPoint(rs.geom)) AS end_lng,
             EXISTS (
                 SELECT 1
-                FROM ridesmart.lane_gap lg
-                WHERE ST_DWithin(lg.geom::geography, rs.geom::geography, 60)
+                FROM ridesmart.cycling_lane cl
+                WHERE ST_DWithin(cl.geom::geography, rs.geom::geography, 40)
+                  AND COALESCE(cl.is_continuous, false) = false
             ) AS has_gap
         FROM ridesmart.road_segment rs, route_line r
         WHERE ST_DWithin(rs.geom::geography, r.geom::geography, 150)
@@ -123,7 +193,7 @@ def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
 
 
 def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
-    # Iteration 1 uses evenly interpolated points as a placeholder route geometry.
+    # This is only the final fallback when OSRM and database-backed routing are unavailable.
     return [
         (request.start_lat, request.start_lng),
         (
@@ -143,8 +213,8 @@ def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteS
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        risk_level = estimate_segment_risk(index)
-        is_gap = detect_gap(index, risk_level)
+        risk_level = estimate_segment_risk(start, end, index)
+        is_gap = detect_gap(start, end, index, risk_level)
         segments.append(
             RouteSegment(
                 coordinates=[
@@ -158,8 +228,14 @@ def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteS
     return segments
 
 
-def estimate_segment_risk(segment_index: int) -> str:
-    # Simple mock pattern until real segment-level datasets are available.
+def estimate_segment_risk(
+    start: tuple[float, float], end: tuple[float, float], segment_index: int
+) -> str:
+    db_risk_level = fetch_segment_risk_from_db(start, end)
+    if db_risk_level:
+        return db_risk_level
+
+    # Simple fallback pattern when nearby segment data is missing.
     if segment_index == 1:
         return "Red"
     if segment_index == 0:
@@ -167,9 +243,97 @@ def estimate_segment_risk(segment_index: int) -> str:
     return "Green"
 
 
-def detect_gap(segment_index: int, risk_level: str) -> bool:
-    # Only flag clear gap candidates so we do not create false alerts.
+def fetch_segment_risk_from_db(
+    start: tuple[float, float], end: tuple[float, float]
+) -> str | None:
+    if not has_routing_data():
+        return None
+
+    query = """
+        WITH candidate_segment AS (
+            SELECT ST_SetSRID(
+                ST_MakeLine(
+                    ST_MakePoint(:start_lng, :start_lat),
+                    ST_MakePoint(:end_lng, :end_lat)
+                ),
+                4326
+            ) AS geom
+        )
+        SELECT AVG(COALESCE(rs.danger_score, 0)) AS average_danger_score
+        FROM ridesmart.road_segment rs, candidate_segment c
+        WHERE ST_DWithin(rs.geom::geography, c.geom::geography, 60)
+    """
+
+    row = fetch_one_safe(
+        query,
+        {
+            "start_lat": start[0],
+            "start_lng": start[1],
+            "end_lat": end[0],
+            "end_lng": end[1],
+        },
+    )
+    if not row or row["average_danger_score"] is None:
+        return None
+    return risk_level_from_danger_score(float(row["average_danger_score"]))
+
+
+def detect_gap(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    segment_index: int,
+    risk_level: str,
+) -> bool:
+    gap_flag = fetch_gap_flag_from_db(start, end)
+    if gap_flag is not None:
+        return gap_flag
+
+    # Only flag a clear gap candidate when no database evidence is available.
     return segment_index == 1 and risk_level == "Red"
+
+
+def fetch_gap_flag_from_db(start: tuple[float, float], end: tuple[float, float]) -> bool | None:
+    if not has_routing_data():
+        return None
+
+    query = """
+        WITH candidate_segment AS (
+            SELECT ST_SetSRID(
+                ST_MakeLine(
+                    ST_MakePoint(:start_lng, :start_lat),
+                    ST_MakePoint(:end_lng, :end_lat)
+                ),
+                4326
+            ) AS geom
+        )
+        SELECT
+            COUNT(*) FILTER (
+                WHERE COALESCE(cl.is_continuous, false) = false
+            ) AS broken_lane_count,
+            COUNT(*) AS matched_lane_count
+        FROM ridesmart.cycling_lane cl, candidate_segment c
+        WHERE ST_DWithin(cl.geom::geography, c.geom::geography, 40)
+    """
+
+    row = fetch_one_safe(
+        query,
+        {
+            "start_lat": start[0],
+            "start_lng": start[1],
+            "end_lat": end[0],
+            "end_lng": end[1],
+        },
+    )
+    if not row or row["matched_lane_count"] == 0:
+        return None
+    return int(row["broken_lane_count"]) > 0
+
+
+def fetch_one_safe(query: str, params: dict[str, float]) -> dict | None:
+    try:
+        return fetch_one(query, params)
+    except Exception:
+        return None
 
 
 def risk_level_from_danger_score(danger_score: float) -> str:
