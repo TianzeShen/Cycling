@@ -1,6 +1,7 @@
 package com.cycling.cyclewise.ui.screen
 
 import android.Manifest
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
@@ -9,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -41,6 +43,7 @@ import com.cycling.cyclewise.data.api.CyclingApiClient
 import com.cycling.cyclewise.data.api.GeocodingClient
 import com.cycling.cyclewise.data.mock.MockCyclingData
 import com.cycling.cyclewise.data.model.FeasibilityRequest
+import com.cycling.cyclewise.data.model.HeatmapRegion
 import com.cycling.cyclewise.data.model.PlaceCandidate
 import com.cycling.cyclewise.data.model.RiskLevel
 import com.cycling.cyclewise.data.model.RouteAlert
@@ -85,11 +88,41 @@ fun MainMapScreen(
     var isRouteVisible by rememberSaveable { mutableStateOf(false) }
     var routeSegments by remember { mutableStateOf(emptyList<RouteSegment>()) }
     var routeAlerts by remember { mutableStateOf(emptyList<RouteAlert>()) }
+    var zoomCommand by rememberSaveable { mutableStateOf(0) }
+    var heatmapRegions by remember { mutableStateOf(emptyList<HeatmapRegion>()) }
+    var isHeatmapLoading by rememberSaveable { mutableStateOf(false) }
+    var heatmapStatusMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var lastRequest by remember { mutableStateOf<FeasibilityRequest?>(null) }
     var locationStatus by rememberSaveable { mutableStateOf("Current location") }
     val filteredHeatmapReports = remember(selectedHeatmapRisk) {
         MockCyclingData.heatmapReports.filter { report ->
             selectedHeatmapRisk == null || report.riskLevel == selectedHeatmapRisk
+        }
+    }
+
+    fun loadMelbourneSa2Heatmap() {
+        coroutineScope.launch {
+            isHeatmapLoading = true
+            runCatching { CyclingApiClient.getMelbourneSa2Heatmap() }
+                .onSuccess { response ->
+                    heatmapRegions = response.regions
+                    heatmapStatusMessage = response.statusMessage
+                    if (response.regions.any { !it.hasGeometry }) {
+                        Toast.makeText(
+                            context,
+                            "Heatmap boundary data unavailable",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                .onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Heatmap loading failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            isHeatmapLoading = false
         }
     }
 
@@ -171,6 +204,9 @@ fun MainMapScreen(
                     routingState = routingState,
                     isRouteVisible = isRouteVisible,
                     heatmapReports = filteredHeatmapReports,
+                    heatmapRegions = heatmapRegions,
+                    isHeatmapLoading = isHeatmapLoading,
+                    heatmapStatusMessage = heatmapStatusMessage,
                     selectedHeatmapRisk = selectedHeatmapRisk,
                     onHeatmapRiskChange = { selectedHeatmapRisk = it },
                     onClose = {
@@ -221,12 +257,14 @@ fun MainMapScreen(
                         ?: userLocation
                         ?: MelbourneCenter
                 },
+                zoomCommand = zoomCommand,
                 userLocation = userLocation,
                 startLocation = selectedStart?.toGeoPoint() ?: userLocation,
                 destinationLocation = selectedDestination?.toGeoPoint(),
                 routeSegments = if (isRouteVisible) routeSegments else emptyList(),
                 routeAlerts = if (isRouteVisible) routeAlerts else emptyList(),
                 heatmapReports = filteredHeatmapReports,
+                heatmapRegions = heatmapRegions,
                 isHeatmapMode = isHeatmapMode,
                 modifier = Modifier.fillMaxSize()
             )
@@ -318,6 +356,7 @@ fun MainMapScreen(
                     val nextHeatmapMode = !isHeatmapMode
                     if (nextHeatmapMode) {
                         wasBottomPanelVisibleBeforeHeatmap = isBottomPanelVisible
+                        loadMelbourneSa2Heatmap()
                     }
                     isHeatmapMode = nextHeatmapMode
                     isBottomPanelVisible = if (nextHeatmapMode) {
@@ -333,7 +372,71 @@ fun MainMapScreen(
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 8.dp)
             )
+
+            MapZoomControls(
+                onZoomIn = { zoomCommand += 1 },
+                onZoomOut = { zoomCommand -= 1 },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp)
+            )
         }
+    }
+}
+
+@Composable
+private fun MapZoomControls(
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .shadow(16.dp, RoundedCornerShape(8.dp), ambientColor = Color(0x332563EB), spotColor = Color(0x442563EB))
+            .background(Color.White.copy(alpha = 0.88f), RoundedCornerShape(8.dp)),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        ZoomButton(label = "+", onClick = onZoomIn)
+        Box(
+            modifier = Modifier
+                .width(34.dp)
+                .height(1.dp)
+                .background(Color(0xFFE2E8F0))
+        )
+        ZoomButton(label = "-", onClick = onZoomOut)
+    }
+}
+
+@Composable
+private fun ZoomButton(
+    label: String,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.90f else 1f, label = "map_zoom_button_scale")
+
+    Box(
+        modifier = Modifier
+            .width(46.dp)
+            .height(44.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF2563EB),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold
+        )
     }
 }
 

@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.data.model.HeatmapReport
+import com.cycling.cyclewise.data.model.HeatmapRegion
 import com.cycling.cyclewise.data.model.RiskLevel
 import com.cycling.cyclewise.ui.state.FeasibilityUiState
 import com.cycling.cyclewise.ui.state.RoutingUiState
@@ -37,6 +38,9 @@ fun MainMapBottomSheet(
     routingState: RoutingUiState,
     isRouteVisible: Boolean,
     heatmapReports: List<HeatmapReport>,
+    heatmapRegions: List<HeatmapRegion>,
+    isHeatmapLoading: Boolean,
+    heatmapStatusMessage: String?,
     selectedHeatmapRisk: RiskLevel?,
     onHeatmapRiskChange: (RiskLevel?) -> Unit,
     onClose: () -> Unit,
@@ -73,6 +77,9 @@ fun MainMapBottomSheet(
             item {
                 HeatmapReportPanel(
                     reports = heatmapReports,
+                    regions = heatmapRegions,
+                    isLoading = isHeatmapLoading,
+                    statusMessage = heatmapStatusMessage,
                     selectedRisk = selectedHeatmapRisk,
                     onRiskChange = onHeatmapRiskChange
                 )

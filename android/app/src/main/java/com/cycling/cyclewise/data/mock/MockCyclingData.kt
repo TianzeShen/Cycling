@@ -4,6 +4,8 @@ import com.cycling.cyclewise.data.model.FeasibilityExplanation
 import com.cycling.cyclewise.data.model.FeasibilityRequest
 import com.cycling.cyclewise.data.model.FeasibilityResponse
 import com.cycling.cyclewise.data.model.HeatmapReport
+import com.cycling.cyclewise.data.model.HeatmapRegion
+import com.cycling.cyclewise.data.model.MelbourneSa2HeatmapResponse
 import com.cycling.cyclewise.data.model.RiskLevel
 import com.cycling.cyclewise.data.model.RouteAlert
 import com.cycling.cyclewise.data.model.RouteCoordinate
@@ -49,6 +51,33 @@ object MockCyclingData {
             issueCount = 3
         )
     )
+
+    fun melbourneSa2HeatmapResponse(): MelbourneSa2HeatmapResponse {
+        return MelbourneSa2HeatmapResponse(
+            regions = listOf(
+                HeatmapRegion(
+                    sa2Code = "MEL0001",
+                    suburbName = "Clayton",
+                    score = 53,
+                    riskLevel = "Yellow",
+                    intensity = 53,
+                    workingPopulationRatio = 1.1721,
+                    shortCommutePct = 19.97,
+                    zeroCarHouseholdPct = 21.37,
+                    geometry = listOf(
+                        listOf(
+                            RouteCoordinate(-37.9025, 145.1265),
+                            RouteCoordinate(-37.9025, 145.1435),
+                            RouteCoordinate(-37.9185, 145.1435),
+                            RouteCoordinate(-37.9185, 145.1265),
+                            RouteCoordinate(-37.9025, 145.1265)
+                        )
+                    )
+                )
+            ),
+            statusMessage = null
+        )
+    }
 
     fun feasibilityResponse(request: FeasibilityRequest): FeasibilityResponse {
         val approximateDistance = kotlin.math.hypot(

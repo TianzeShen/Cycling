@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.cycling.cyclewise.data.model.HeatmapReport
+import com.cycling.cyclewise.data.model.HeatmapRegion
 import com.cycling.cyclewise.data.model.RiskLevel
 import com.cycling.cyclewise.data.model.RouteAlert
 import com.cycling.cyclewise.data.model.RouteSegment
@@ -26,17 +27,20 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 
 @Composable
 fun OpenStreetMapView(
     center: GeoPoint,
+    zoomCommand: Int,
     userLocation: GeoPoint?,
     startLocation: GeoPoint?,
     destinationLocation: GeoPoint?,
     routeSegments: List<RouteSegment>,
     routeAlerts: List<RouteAlert>,
     heatmapReports: List<HeatmapReport>,
+    heatmapRegions: List<HeatmapRegion>,
     isHeatmapMode: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -45,6 +49,7 @@ fun OpenStreetMapView(
     val iconCache = remember { MapIconCache(context) }
     val lastOverlayKey = remember { mutableStateOf("") }
     val lastCenter = remember { mutableStateOf<GeoPoint?>(null) }
+    val lastZoomCommand = remember { mutableStateOf(zoomCommand) }
     val overlayKey = rememberOverlayKey(
         userLocation = userLocation,
         startLocation = startLocation,
@@ -52,6 +57,7 @@ fun OpenStreetMapView(
         routeSegments = routeSegments,
         routeAlerts = routeAlerts,
         heatmapReports = heatmapReports,
+        heatmapRegions = heatmapRegions,
         isHeatmapMode = isHeatmapMode
     )
 
@@ -62,6 +68,15 @@ fun OpenStreetMapView(
             if (!center.isSamePointAs(lastCenter.value)) {
                 map.controller.setCenter(center)
                 lastCenter.value = center
+            }
+
+            if (zoomCommand != lastZoomCommand.value) {
+                if (zoomCommand > lastZoomCommand.value) {
+                    map.controller.zoomIn()
+                } else {
+                    map.controller.zoomOut()
+                }
+                lastZoomCommand.value = zoomCommand
             }
 
             if (overlayKey != lastOverlayKey.value) {
@@ -137,19 +152,26 @@ fun OpenStreetMapView(
                     )
                 }
                 if (isHeatmapMode) {
-                    heatmapReports.forEach { report ->
-                        val color = report.riskLevel.toHeatmapColor()
-                        val location = GeoPoint(report.lat, report.lng)
-                        map.overlays.add(
-                            Marker(map).apply {
-                                position = location
-                                title = "${report.riskLevel.label}: ${report.title}"
-                                icon = iconCache.riskIcon(report.riskLevel)
-                                infoWindow = null
-                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    heatmapRegions
+                        .filter { region -> region.hasGeometry }
+                        .forEach { region ->
+                            region.geometry.forEach { ring ->
+                                map.overlays.add(
+                                    Polygon(map).apply {
+                                        points = ring.map { GeoPoint(it.lat, it.lng) }
+                                        fillPaint.color = region.toSa2FillColor()
+                                        outlinePaint.color = region.toSa2StrokeColor()
+                                        outlinePaint.strokeWidth = 2.5f
+                                        title = region.suburbName
+                                        snippet = "Score: ${region.score} | Risk: ${region.riskLevel}"
+                                        setOnClickListener { polygon, _, _ ->
+                                            polygon.showInfoWindow()
+                                            true
+                                        }
+                                    }
+                                )
                             }
-                        )
-                    }
+                        }
                 }
                 lastOverlayKey.value = overlayKey
                 map.invalidate()
@@ -198,6 +220,7 @@ private fun rememberOverlayKey(
     routeSegments: List<RouteSegment>,
     routeAlerts: List<RouteAlert>,
     heatmapReports: List<HeatmapReport>,
+    heatmapRegions: List<HeatmapRegion>,
     isHeatmapMode: Boolean
 ): String {
     return remember(
@@ -207,6 +230,7 @@ private fun rememberOverlayKey(
         routeSegments,
         routeAlerts,
         heatmapReports,
+        heatmapRegions,
         isHeatmapMode
     ) {
         buildString {
@@ -224,6 +248,13 @@ private fun rememberOverlayKey(
             append("|heat=")
             heatmapReports.forEach {
                 append(it.title).append(it.riskLevel).append(it.lat).append(',').append(it.lng)
+            }
+            append("|sa2=")
+            heatmapRegions.forEach { region ->
+                append(region.sa2Code).append(region.score).append(region.riskLevel)
+                region.geometry.forEach { ring ->
+                    ring.forEach { append(it.lat).append(',').append(it.lng).append(';') }
+                }
             }
         }
     }
@@ -415,6 +446,29 @@ private fun RiskLevel.toHeatmapColor(): Int {
         RiskLevel.High -> Color.rgb(239, 68, 68)
         RiskLevel.Medium -> Color.rgb(249, 128, 70)
         RiskLevel.Low -> Color.rgb(242, 201, 76)
+    }
+}
+
+private fun HeatmapRegion.toSa2FillColor(): Int {
+    return riskColor(alpha = 95)
+}
+
+private fun HeatmapRegion.toSa2StrokeColor(): Int {
+    return riskColor(alpha = 185)
+}
+
+private fun HeatmapRegion.riskColor(alpha: Int): Int {
+    return when (riskLevel.lowercase()) {
+        "green" -> Color.argb(alpha, 34, 197, 94)
+        "yellow" -> Color.argb(alpha, 245, 158, 11)
+        "red" -> Color.argb(alpha, 239, 68, 68)
+        else -> {
+            when {
+                score < 40 -> Color.argb(alpha, 34, 197, 94)
+                score < 70 -> Color.argb(alpha, 245, 158, 11)
+                else -> Color.argb(alpha, 239, 68, 68)
+            }
+        }
     }
 }
 
