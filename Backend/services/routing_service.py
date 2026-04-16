@@ -135,7 +135,7 @@ def request_ors_route(
         headers={
             "Authorization": ORS_API_KEY,
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/json, application/geo+json",
         },
         method="POST",
     )
