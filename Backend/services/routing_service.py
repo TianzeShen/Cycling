@@ -1,12 +1,13 @@
 import json
 import logging
 import os
+from math import cos, radians
 from time import perf_counter
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 try:
-    from Backend.database import fetch_all, fetch_one, fetch_scalar
+    from Backend.database import fetch_all, fetch_scalar
     from Backend.schemas import (
         HeatmapZone,
         RouteSegment,
@@ -15,7 +16,7 @@ try:
         RoutingResponse,
     )
 except ModuleNotFoundError:
-    from database import fetch_all, fetch_one, fetch_scalar
+    from database import fetch_all, fetch_scalar
     from schemas import (
         HeatmapZone,
         RouteSegment,
@@ -25,11 +26,16 @@ except ModuleNotFoundError:
     )
 
 
+OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org")
+OSRM_PRIMARY_PROFILE = os.getenv("RIDESMART_OSRM_PROFILE", "bike")
+OSRM_FALLBACK_PROFILE = os.getenv("RIDESMART_OSRM_FALLBACK_PROFILE", "driving")
+OSRM_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_OSRM_TIMEOUT", "8"))
+USE_OSRM_ROUTING = os.getenv("RIDESMART_USE_OSRM", "true").lower() == "true"
 ORS_BASE_URL = os.getenv("RIDESMART_ORS_URL", "https://api.openrouteservice.org")
 ORS_PROFILE = os.getenv("RIDESMART_ORS_PROFILE", "cycling-regular")
 ORS_API_KEY = os.getenv("RIDESMART_ORS_API_KEY", "")
 ORS_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_ORS_TIMEOUT", "12"))
-USE_ORS_ROUTING = os.getenv("RIDESMART_USE_ORS", "true").lower() == "true"
+USE_ORS_ROUTING = os.getenv("RIDESMART_USE_ORS", "false").lower() == "true"
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -37,15 +43,17 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     total_start = perf_counter()
     logger.warning("routing.started")
 
-    ors_start = perf_counter()
-    route_points = fetch_ors_route_points(request)
-    logger.warning("routing.ors_lookup_ms=%.1f", (perf_counter() - ors_start) * 1000)
+    external_start = perf_counter()
+    route_points = fetch_external_route_points(request)
+    logger.warning(
+        "routing.external_lookup_ms=%.1f", (perf_counter() - external_start) * 1000
+    )
 
     if route_points:
         build_start = perf_counter()
         segments = build_route_segments(route_points)
         logger.warning(
-            "routing.segment_build_from_ors_ms=%.1f",
+            "routing.segment_build_from_external_ms=%.1f",
             (perf_counter() - build_start) * 1000,
         )
     else:
@@ -109,13 +117,71 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     )
 
 
+def fetch_external_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    route_points = fetch_osrm_route_points(request)
+    if route_points:
+        return route_points
+    return fetch_ors_route_points(request)
+
+
+def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    if not USE_OSRM_ROUTING:
+        logger.warning("routing.osrm_disabled=true")
+        return []
+
+    route_points = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
+    if route_points:
+        logger.warning("routing.external_provider=osrm profile=%s", OSRM_PRIMARY_PROFILE)
+        return route_points
+
+    if OSRM_FALLBACK_PROFILE == OSRM_PRIMARY_PROFILE:
+        return []
+
+    route_points = request_osrm_route(request, OSRM_FALLBACK_PROFILE)
+    if route_points:
+        logger.warning("routing.external_provider=osrm profile=%s", OSRM_FALLBACK_PROFILE)
+    return route_points
+
+
+def request_osrm_route(
+    request: RoutingRequest, profile: str
+) -> list[tuple[float, float]]:
+    coordinates = (
+        f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
+    )
+    url = (
+        f"{OSRM_BASE_URL.rstrip('/')}/route/v1/{profile}/{coordinates}"
+        "?overview=full&geometries=geojson&steps=false"
+    )
+
+    try:
+        with urlopen(url, timeout=OSRM_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (URLError, TimeoutError, ValueError):
+        return []
+
+    routes = payload.get("routes", [])
+    if not routes:
+        return []
+
+    geometry = routes[0].get("geometry", {})
+    coordinates_data = geometry.get("coordinates", [])
+    route_points = [
+        (float(coordinate[1]), float(coordinate[0]))
+        for coordinate in coordinates_data
+        if len(coordinate) >= 2
+    ]
+    return compress_route_points(route_points)
+
+
 def fetch_ors_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
     if not USE_ORS_ROUTING:
-        logger.warning("routing.ors_disabled_using_local_fallback=true")
+        logger.warning("routing.ors_disabled=true")
         return []
     if not ORS_API_KEY:
-        logger.warning("routing.ors_missing_api_key_using_local_fallback=true")
+        logger.warning("routing.ors_missing_api_key=true")
         return []
+    logger.warning("routing.external_provider=ors profile=%s", ORS_PROFILE)
     return request_ors_route(request, ORS_PROFILE)
 
 
@@ -186,6 +252,14 @@ def has_routing_data() -> bool:
         return False
 
 
+def has_cycling_lane_data() -> bool:
+    query = "SELECT COUNT(*) > 0 FROM ridesmart.cycling_lane"
+    try:
+        return bool(fetch_scalar(query))
+    except Exception:
+        return False
+
+
 def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
     if not has_routing_data():
         return []
@@ -202,7 +276,6 @@ def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
         )
         SELECT
             rs.segment_id::text AS segment_id,
-            COALESCE(rs.danger_score, 0) AS danger_score,
             ST_Y(ST_StartPoint(rs.geom)) AS start_lat,
             ST_X(ST_StartPoint(rs.geom)) AS start_lng,
             ST_Y(ST_EndPoint(rs.geom)) AS end_lat,
@@ -244,10 +317,7 @@ def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
                     [round(row["start_lat"], 6), round(row["start_lng"], 6)],
                     [round(row["end_lat"], 6), round(row["end_lng"], 6)],
                 ],
-                risk_level=segment_risk_level(
-                    risk_level_from_danger_score(float(row["danger_score"])),
-                    is_gap,
-                ),
+                risk_level=segment_risk_level(is_gap),
                 is_gap=is_gap,
             )
         )
@@ -271,255 +341,132 @@ def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float
 
 
 def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteSegment]:
-    segment_contexts = fetch_segment_contexts_from_db(route_points)
+    gap_lane_geometries = fetch_gap_lane_geometries_near_route(route_points)
     segments: list[RouteSegment] = []
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        segment_context = segment_contexts.get(index)
-        estimated_risk_level = estimate_segment_risk(start, end, index, segment_context)
-        is_gap = detect_gap(start, end, index, estimated_risk_level, segment_context)
+        is_gap = detect_gap(index, start, end, gap_lane_geometries)
         segments.append(
             RouteSegment(
                 coordinates=[
                     [round(start[0], 6), round(start[1], 6)],
                     [round(end[0], 6), round(end[1], 6)],
                 ],
-                risk_level=segment_risk_level(estimated_risk_level, is_gap),
+                risk_level=segment_risk_level(is_gap),
                 is_gap=is_gap,
             )
         )
     return segments
 
 
-def fetch_segment_contexts_from_db(
+def fetch_gap_lane_geometries_near_route(
     route_points: list[tuple[float, float]]
-) -> dict[int, dict[str, float | bool | None]]:
-    if not has_routing_data() or len(route_points) < 2:
-        return {}
+) -> list[list[tuple[float, float]]]:
+    if not has_cycling_lane_data() or len(route_points) < 2:
+        return []
 
-    segment_selects: list[str] = []
-    params: dict[str, float | int] = {}
-
-    for index in range(len(route_points) - 1):
-        start = route_points[index]
-        end = route_points[index + 1]
-        segment_selects.append(
-            f"""
-            SELECT
-                {index} AS segment_index,
-                ST_SetSRID(
-                    ST_MakeLine(
-                        ST_MakePoint(:start_lng_{index}, :start_lat_{index}),
-                        ST_MakePoint(:end_lng_{index}, :end_lat_{index})
-                    ),
-                    4326
-                ) AS geom
-            """
-        )
-        params[f"start_lat_{index}"] = start[0]
-        params[f"start_lng_{index}"] = start[1]
-        params[f"end_lat_{index}"] = end[0]
-        params[f"end_lng_{index}"] = end[1]
-
-    query = f"""
-        WITH candidate_segments AS (
-            {" UNION ALL ".join(segment_selects)}
-        ),
-        road_stats AS (
-            SELECT
-                cs.segment_index,
-                AVG(COALESCE(rs.danger_score, 0)) AS average_danger_score
-            FROM candidate_segments cs
-            LEFT JOIN ridesmart.road_segment rs
-              ON ST_DWithin(rs.geom::geography, cs.geom::geography, 60)
-            GROUP BY cs.segment_index
-        ),
-        lane_stats AS (
-            SELECT
-                cs.segment_index,
-                COUNT(*) FILTER (
-                    WHERE COALESCE(cl.is_continuous, false) = false
-                ) AS broken_lane_count,
-                COUNT(cl.lane_id) AS matched_lane_count
-            FROM candidate_segments cs
-            LEFT JOIN ridesmart.cycling_lane cl
-              ON ST_DWithin(cl.geom::geography, cs.geom::geography, 40)
-            GROUP BY cs.segment_index
-        )
-        SELECT
-            cs.segment_index,
-            road_stats.average_danger_score,
-            COALESCE(lane_stats.broken_lane_count, 0) AS broken_lane_count,
-            COALESCE(lane_stats.matched_lane_count, 0) AS matched_lane_count
-        FROM candidate_segments cs
-        LEFT JOIN road_stats
-          ON road_stats.segment_index = cs.segment_index
-        LEFT JOIN lane_stats
-          ON lane_stats.segment_index = cs.segment_index
-        ORDER BY cs.segment_index
-    """
-
-    try:
-        rows = fetch_all(query, params)
-    except Exception:
-        return {}
-
-    return {
-        int(row["segment_index"]): {
-            "average_danger_score": row["average_danger_score"],
-            "matched_lane_count": float(row["matched_lane_count"]),
-            "has_gap": int(row["broken_lane_count"]) > 0
-            if int(row["matched_lane_count"]) > 0
-            else None,
-        }
-        for row in rows
-    }
-
-
-def estimate_segment_risk(
-    start: tuple[float, float],
-    end: tuple[float, float],
-    segment_index: int,
-    segment_context: dict[str, float | bool | None] | None = None,
-) -> str:
-    db_risk_level = risk_level_from_segment_context(segment_context)
-    if db_risk_level:
-        return db_risk_level
-
-    db_risk_level = fetch_segment_risk_from_db(start, end)
-    if db_risk_level:
-        return db_risk_level
-
-    # Simple fallback pattern when nearby segment data is missing.
-    if segment_index == 1:
-        return "Red"
-    if segment_index == 0:
-        return "Yellow"
-    return "Green"
-
-
-def fetch_segment_risk_from_db(
-    start: tuple[float, float], end: tuple[float, float]
-) -> str | None:
-    if not has_routing_data():
-        return None
+    route_coordinates = ",".join(
+        f"{lng} {lat}" for lat, lng in route_points
+    )
 
     query = """
-        WITH candidate_segment AS (
+        WITH route_line AS (
             SELECT ST_SetSRID(
-                ST_MakeLine(
-                    ST_MakePoint(:start_lng, :start_lat),
-                    ST_MakePoint(:end_lng, :end_lat)
-                ),
+                ST_GeomFromText(:route_wkt),
                 4326
             ) AS geom
         )
-        SELECT AVG(COALESCE(rs.danger_score, 0)) AS average_danger_score
-        FROM ridesmart.road_segment rs, candidate_segment c
-        WHERE ST_DWithin(rs.geom::geography, c.geom::geography, 60)
+        SELECT
+            ST_AsGeoJSON(cl.geom) AS geom_json
+        FROM ridesmart.cycling_lane cl, route_line r
+        WHERE COALESCE(cl.is_continuous, false) = false
+          AND ST_DWithin(cl.geom::geography, r.geom::geography, 40)
     """
 
-    row = fetch_one_safe(
-        query,
-        {
-            "start_lat": start[0],
-            "start_lng": start[1],
-            "end_lat": end[0],
-            "end_lng": end[1],
-        },
-    )
-    if not row or row["average_danger_score"] is None:
-        return None
-    return risk_level_from_danger_score(float(row["average_danger_score"]))
+    try:
+        rows = fetch_all(query, {"route_wkt": f"LINESTRING({route_coordinates})"})
+    except Exception:
+        return []
+
+    lane_geometries: list[list[tuple[float, float]]] = []
+    for row in rows:
+        geom_json = row.get("geom_json")
+        if not geom_json:
+            continue
+        try:
+            geometry = json.loads(geom_json)
+        except ValueError:
+            continue
+        coordinates = geometry.get("coordinates", [])
+        lane_points = [
+            (float(point[1]), float(point[0]))
+            for point in coordinates
+            if len(point) >= 2
+        ]
+        if lane_points:
+            lane_geometries.append(lane_points)
+    return lane_geometries
 
 
 def detect_gap(
+    segment_index: int,
     start: tuple[float, float],
     end: tuple[float, float],
-    segment_index: int,
-    risk_level: str,
-    segment_context: dict[str, float | bool | None] | None = None,
+    gap_lane_geometries: list[list[tuple[float, float]]],
 ) -> bool:
-    if segment_context is not None and segment_context.get("has_gap") is not None:
-        return bool(segment_context["has_gap"])
+    if not gap_lane_geometries:
+        return segment_index == 1
 
-    gap_flag = fetch_gap_flag_from_db(start, end)
-    if gap_flag is not None:
-        return gap_flag
-
-    # Only flag a clear gap candidate when no database evidence is available.
-    return segment_index == 1 and risk_level == "Red"
-
-
-def fetch_gap_flag_from_db(start: tuple[float, float], end: tuple[float, float]) -> bool | None:
-    if not has_routing_data():
-        return None
-
-    query = """
-        WITH candidate_segment AS (
-            SELECT ST_SetSRID(
-                ST_MakeLine(
-                    ST_MakePoint(:start_lng, :start_lat),
-                    ST_MakePoint(:end_lng, :end_lat)
-                ),
-                4326
-            ) AS geom
-        )
-        SELECT
-            COUNT(*) FILTER (
-                WHERE COALESCE(cl.is_continuous, false) = false
-            ) AS broken_lane_count,
-            COUNT(*) AS matched_lane_count
-        FROM ridesmart.cycling_lane cl, candidate_segment c
-        WHERE ST_DWithin(cl.geom::geography, c.geom::geography, 40)
-    """
-
-    row = fetch_one_safe(
-        query,
-        {
-            "start_lat": start[0],
-            "start_lng": start[1],
-            "end_lat": end[0],
-            "end_lng": end[1],
-        },
-    )
-    if not row or row["matched_lane_count"] == 0:
-        return None
-    return int(row["broken_lane_count"]) > 0
+    sampled_points = sample_segment_points(start, end)
+    for gap_lane in gap_lane_geometries:
+        for segment_point in sampled_points:
+            if polyline_is_near_point(gap_lane, segment_point, threshold_m=45):
+                return True
+    return False
 
 
-def fetch_one_safe(query: str, params: dict[str, float]) -> dict | None:
-    try:
-        return fetch_one(query, params)
-    except Exception:
-        return None
+def sample_segment_points(
+    start: tuple[float, float], end: tuple[float, float]
+) -> list[tuple[float, float]]:
+    return [
+        start,
+        (
+            start[0] + (end[0] - start[0]) * 0.5,
+            start[1] + (end[1] - start[1]) * 0.5,
+        ),
+        end,
+    ]
 
 
-def risk_level_from_segment_context(
-    segment_context: dict[str, float | bool | None] | None,
-) -> str | None:
-    if segment_context is None:
-        return None
+def polyline_is_near_point(
+    polyline: list[tuple[float, float]],
+    point: tuple[float, float],
+    threshold_m: float,
+) -> bool:
+    for polyline_point in polyline:
+        if distance_m(point, polyline_point) <= threshold_m:
+            return True
+    return False
 
-    average_danger_score = segment_context.get("average_danger_score")
-    if average_danger_score is None:
-        return None
-    return risk_level_from_danger_score(float(average_danger_score))
+
+def distance_m(
+    point_a: tuple[float, float],
+    point_b: tuple[float, float],
+) -> float:
+    average_latitude = (point_a[0] + point_b[0]) / 2
+    lat_scale = 111_320.0
+    lng_scale = 111_320.0 * max(0.1, abs(cos(radians(average_latitude))))
+
+    delta_lat_m = (point_a[0] - point_b[0]) * lat_scale
+    delta_lng_m = (point_a[1] - point_b[1]) * lng_scale
+    return (delta_lat_m**2 + delta_lng_m**2) ** 0.5
 
 
-def segment_risk_level(base_risk_level: str, is_gap: bool) -> str:
-    # Any route segment near a non-continuous bike lane should stand out clearly.
+def segment_risk_level(is_gap: bool) -> str:
+    # Routing now focuses on lane continuity only: gap segments are red, others stay green.
     if is_gap:
         return "Red"
-    return base_risk_level
-
-
-def risk_level_from_danger_score(danger_score: float) -> str:
-    if danger_score >= 70:
-        return "Red"
-    if danger_score >= 40:
-        return "Yellow"
     return "Green"
 
 
