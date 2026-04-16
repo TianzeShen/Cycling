@@ -29,6 +29,7 @@ OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org
 OSRM_PRIMARY_PROFILE = os.getenv("RIDESMART_OSRM_PROFILE", "bike")
 OSRM_FALLBACK_PROFILE = os.getenv("RIDESMART_OSRM_FALLBACK_PROFILE", "driving")
 OSRM_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_OSRM_TIMEOUT", "6"))
+USE_OSRM_ROUTING = os.getenv("RIDESMART_USE_OSRM", "false").lower() == "true"
 logger = logging.getLogger(__name__)
 
 
@@ -108,6 +109,10 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
 
 
 def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    if not USE_OSRM_ROUTING:
+        logger.warning("routing.osrm_disabled_using_local_fallback=true")
+        return []
+
     route_points = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
     if route_points:
         return route_points
