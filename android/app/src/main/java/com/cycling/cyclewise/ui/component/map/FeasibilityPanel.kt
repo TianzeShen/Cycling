@@ -1,13 +1,20 @@
 package com.cycling.cyclewise.ui.component.map
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cycling.cyclewise.data.model.FeasibilityResponse
 import com.cycling.cyclewise.ui.component.InfoItem
@@ -39,9 +46,10 @@ fun FeasibilityPanel(
                 Text("Evaluating trip...", style = MaterialTheme.typography.bodyMedium)
             }
 
-            is FeasibilityUiState.Error -> InfoItem(
+            is FeasibilityUiState.Error -> RiskInfoItem(
                 title = "Unable to evaluate trip",
-                body = feasibilityState.message
+                body = feasibilityState.message,
+                risk = "High"
             )
 
             is FeasibilityUiState.Success -> FeasibilitySuccessPanel(
@@ -79,7 +87,7 @@ private fun FeasibilitySuccessPanel(
         }
     )
     if (result.warningMessage != null) {
-        InfoItem(title = "Warning", body = result.warningMessage)
+        RiskInfoItem(title = "Warning", body = result.warningMessage, risk = "High")
     }
     if (result.explanations.isEmpty()) {
         InfoItem(
@@ -88,26 +96,29 @@ private fun FeasibilitySuccessPanel(
         )
     } else {
         result.explanations.forEach { explanation ->
-            InfoItem(
+            RiskInfoItem(
                 title = explanation.factor,
-                body = "Impact: ${explanation.impact}"
+                body = "Impact: ${explanation.impact}",
+                risk = explanation.impact
             )
         }
     }
-    Button(
-        onClick = if (isRouteVisible) onHideRoute else onViewRoute
-    ) {
-        Text(
-            when (routingState) {
-                RoutingUiState.Loading -> "Loading route..."
-                else -> if (isRouteVisible) "Hide risk route" else "View risk route"
-            }
+    when {
+        routingState == RoutingUiState.Loading -> Text(
+            "Generating risk route...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        isRouteVisible -> Button(onClick = onHideRoute) {
+            Text("Hide risk route")
+        }
     }
     when (routingState) {
-        is RoutingUiState.Error -> InfoItem(
+        is RoutingUiState.Error -> RiskInfoItem(
             title = "Unable to load route",
-            body = routingState.message
+            body = routingState.message,
+            risk = "High"
         )
 
         is RoutingUiState.Success -> {
@@ -115,11 +126,50 @@ private fun FeasibilitySuccessPanel(
                 InfoItem(title = "Route alerts", body = "No alerts returned for this route.")
             } else {
                 routingState.alerts.forEach { alert ->
-                    InfoItem(title = "Route alert", body = alert.message)
+                    RiskInfoItem(title = "Route alert", body = alert.message, risk = "High")
                 }
             }
         }
 
         else -> Unit
+    }
+}
+
+@Composable
+private fun RiskInfoItem(
+    title: String,
+    body: String,
+    risk: String,
+    modifier: Modifier = Modifier
+) {
+    val color = risk.toRiskColor()
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+            .border(1.dp, color.copy(alpha = 0.34f), RoundedCornerShape(8.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = color,
+            fontWeight = FontWeight.ExtraBold
+        )
+        Text(
+            body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun String.toRiskColor(): Color {
+    return when (lowercase()) {
+        "high", "red" -> Color(0xFFEF4444)
+        "medium", "yellow", "moderate" -> Color(0xFFF59E0B)
+        "low", "green" -> Color(0xFF16A34A)
+        else -> Color(0xFF2563EB)
     }
 }

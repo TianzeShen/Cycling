@@ -126,6 +126,21 @@ fun MainMapScreen(
         }
     }
 
+    fun clearRouteEvaluation() {
+        startPoint = ""
+        destination = ""
+        selectedStart = null
+        selectedDestination = null
+        startSuggestions = emptyList()
+        destinationSuggestions = emptyList()
+        feasibilityState = FeasibilityUiState.Empty
+        routingState = RoutingUiState.Empty
+        isRouteVisible = false
+        routeSegments = emptyList()
+        routeAlerts = emptyList()
+        lastRequest = null
+    }
+
     LaunchedEffect(isBottomPanelVisible) {
         onBottomPanelVisibilityChange(isBottomPanelVisible)
     }
@@ -211,6 +226,9 @@ fun MainMapScreen(
                     onHeatmapRiskChange = { selectedHeatmapRisk = it },
                     onClose = {
                         isBottomPanelVisible = false
+                        if (!isHeatmapMode) {
+                            clearRouteEvaluation()
+                        }
                         coroutineScope.launch {
                             scaffoldState.bottomSheetState.partialExpand()
                         }
@@ -269,85 +287,100 @@ fun MainMapScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            LocationSearchOverlay(
-                startPoint = startPoint,
-                onStartPointChange = {
-                    startPoint = it
-                    selectedStart = null
-                },
-                startSuggestions = startSuggestions,
-                onStartSuggestionClick = { place ->
-                    selectedStart = place
-                    startPoint = place.displayName
-                    startSuggestions = emptyList()
-                },
-                destination = destination,
-                onDestinationChange = {
-                    destination = it
-                    selectedDestination = null
-                },
-                destinationSuggestions = destinationSuggestions,
-                onDestinationSuggestionClick = { place ->
-                    selectedDestination = place
-                    destination = place.displayName
-                    destinationSuggestions = emptyList()
-                },
-                locationStatus = locationStatus,
-                onUseCurrentLocation = {
-                    if (hasLocationPermission(context)) {
-                        requestCurrentLocation(context, ::updateUserLocation)
-                        startPoint = ""
+            if (!isHeatmapMode) {
+                LocationSearchOverlay(
+                    startPoint = startPoint,
+                    onStartPointChange = {
+                        startPoint = it
                         selectedStart = null
-                    } else {
-                        locationPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
-                    }
-                },
-                onEvaluate = {
-                    isBottomPanelVisible = true
-                    coroutineScope.launch {
-                        feasibilityState = FeasibilityUiState.Loading
-                        routingState = RoutingUiState.Empty
-                        isRouteVisible = false
-                        routeSegments = emptyList()
-                        routeAlerts = emptyList()
-                        val request = runCatching {
-                            buildFeasibilityRequest(
-                                startPoint = startPoint,
-                                selectedStart = selectedStart,
-                                userLocation = userLocation,
-                                destination = destination,
-                                selectedDestination = selectedDestination
-                            )
-                        }.getOrElse { error ->
-                            feasibilityState = FeasibilityUiState.Error(
-                                error.message ?: "Select a valid start and destination."
-                            )
-                            return@launch
-                        }
-                        lastRequest = request
-                        runCatching { CyclingApiClient.evaluateFeasibility(request) }
-                            .onSuccess { result ->
-                                feasibilityState = FeasibilityUiState.Success(result)
-                                scaffoldState.bottomSheetState.expand()
-                            }
-                            .onFailure { error ->
-                                feasibilityState = FeasibilityUiState.Error(
-                                    error.message ?: "Feasibility request failed."
+                    },
+                    startSuggestions = startSuggestions,
+                    onStartSuggestionClick = { place ->
+                        selectedStart = place
+                        startPoint = place.displayName
+                        startSuggestions = emptyList()
+                    },
+                    destination = destination,
+                    onDestinationChange = {
+                        destination = it
+                        selectedDestination = null
+                    },
+                    destinationSuggestions = destinationSuggestions,
+                    onDestinationSuggestionClick = { place ->
+                        selectedDestination = place
+                        destination = place.displayName
+                        destinationSuggestions = emptyList()
+                    },
+                    locationStatus = locationStatus,
+                    onUseCurrentLocation = {
+                        if (hasLocationPermission(context)) {
+                            requestCurrentLocation(context, ::updateUserLocation)
+                            startPoint = ""
+                            selectedStart = null
+                        } else {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
                                 )
-                                scaffoldState.bottomSheetState.expand()
+                            )
+                        }
+                    },
+                    onEvaluate = {
+                        isBottomPanelVisible = true
+                        coroutineScope.launch {
+                            feasibilityState = FeasibilityUiState.Loading
+                            routingState = RoutingUiState.Empty
+                            isRouteVisible = false
+                            routeSegments = emptyList()
+                            routeAlerts = emptyList()
+                            val request = runCatching {
+                                buildFeasibilityRequest(
+                                    startPoint = startPoint,
+                                    selectedStart = selectedStart,
+                                    userLocation = userLocation,
+                                    destination = destination,
+                                    selectedDestination = selectedDestination
+                                )
+                            }.getOrElse { error ->
+                                feasibilityState = FeasibilityUiState.Error(
+                                    error.message ?: "Select a valid start and destination."
+                                )
+                                return@launch
                             }
-                    }
-                },
-                isEvaluating = feasibilityState == FeasibilityUiState.Loading,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(16.dp)
-            )
+                            lastRequest = request
+                            runCatching { CyclingApiClient.evaluateFeasibility(request) }
+                                .onSuccess { result ->
+                                    feasibilityState = FeasibilityUiState.Success(result)
+                                    scaffoldState.bottomSheetState.expand()
+                                }
+                                .onFailure { error ->
+                                    feasibilityState = FeasibilityUiState.Error(
+                                        error.message ?: "Feasibility request failed."
+                                    )
+                                    scaffoldState.bottomSheetState.expand()
+                                }
+                            routingState = RoutingUiState.Loading
+                            runCatching { CyclingApiClient.recommendRoute(request) }
+                                .onSuccess { response ->
+                                    routeSegments = response.routeSegments
+                                    routeAlerts = response.alerts
+                                    isRouteVisible = true
+                                    routingState = RoutingUiState.Success(response.alerts)
+                                }
+                                .onFailure { error ->
+                                    routingState = RoutingUiState.Error(
+                                        error.message ?: "Route recommendation failed."
+                                    )
+                                }
+                        }
+                    },
+                    isEvaluating = feasibilityState == FeasibilityUiState.Loading,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(16.dp)
+                )
+            }
 
             HeatmapToolButton(
                 text = if (isHeatmapMode) "Route" else "Heatmap",

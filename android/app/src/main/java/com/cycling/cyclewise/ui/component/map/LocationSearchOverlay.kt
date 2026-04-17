@@ -95,7 +95,7 @@ fun LocationSearchOverlay(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "AI route decision",
+                    "RideSmart",
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold
