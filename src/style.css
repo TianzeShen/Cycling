@@ -40,6 +40,25 @@ button:hover,
   background: #0c766c;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+button.secondary {
+  background: #eef5f3;
+  color: #24433e;
+}
+
+button.secondary:hover {
+  background: #dcebe7;
+}
+
+button.inline-action {
+  justify-self: start;
+  padding: 0.65rem 0.85rem;
+}
+
 h1,
 h2,
 h3,
@@ -160,6 +179,75 @@ main {
   padding: 1.5rem;
 }
 
+.map-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.map-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.map-toolbar h2 {
+  margin-bottom: 0;
+}
+
+.mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.map-workspace {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.7fr);
+}
+
+.map-side-panel {
+  align-content: start;
+  display: grid;
+  gap: 1rem;
+}
+
+.mapbox-shell {
+  background: #dbe9e4;
+  border: 1px solid #c9d7d3;
+  border-radius: 8px;
+  min-height: 620px;
+  overflow: hidden;
+  position: relative;
+}
+
+.mapbox-container {
+  height: 100%;
+  min-height: 620px;
+  width: 100%;
+}
+
+.mapbox-token-empty {
+  align-content: center;
+  display: grid;
+  height: 100%;
+  min-height: 620px;
+}
+
+.mapbox-token-empty code {
+  background: #edf7f5;
+  border-radius: 6px;
+  color: #0c766c;
+  padding: 0.1rem 0.3rem;
+}
+
+.mapboxgl-ctrl-group {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .page-grid,
 .report-layout,
 .profile-grid {
@@ -204,6 +292,63 @@ select:focus {
   outline: 3px solid #d5f3ee;
 }
 
+.suggestion-field {
+  position: relative;
+}
+
+.suggestion-list {
+  background: #ffffff;
+  border: 1px solid #c8d4d1;
+  border-radius: 8px;
+  box-shadow: 0 14px 28px rgba(17, 35, 31, 0.14);
+  display: grid;
+  left: 0;
+  list-style: none;
+  margin: 0.4rem 0 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0.35rem;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+}
+
+.suggestion-list button {
+  background: transparent;
+  color: #30413d;
+  display: grid;
+  gap: 0.2rem;
+  justify-content: flex-start;
+  padding: 0.65rem 0.7rem;
+  text-align: left;
+  width: 100%;
+}
+
+.suggestion-list button:hover {
+  background: #e7f6f3;
+  color: #09655d;
+}
+
+.suggestion-list small {
+  color: #65716f;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.suggestion-list em {
+  color: #53605d;
+  font-size: 0.85rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.helper-text {
+  color: #65716f;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
 .coordinate-grid {
   color: #65716f;
   display: grid;
@@ -227,6 +372,10 @@ select:focus {
   object-fit: cover;
   opacity: 0.72;
   width: 100%;
+}
+
+.map-heatmap img {
+  filter: saturate(0.85) contrast(0.95);
 }
 
 .route-line {
@@ -257,6 +406,43 @@ select:focus {
 .end {
   background: #e85d5d;
   right: -2px;
+}
+
+.heatmap-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.heat-zone {
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.72;
+  position: absolute;
+}
+
+.heat-critical {
+  background: rgba(232, 93, 93, 0.78);
+  height: 190px;
+  left: 48%;
+  top: 22%;
+  width: 190px;
+}
+
+.heat-high {
+  background: rgba(255, 209, 102, 0.72);
+  height: 220px;
+  left: 18%;
+  top: 46%;
+  width: 220px;
+}
+
+.heat-medium {
+  background: rgba(18, 165, 148, 0.58);
+  height: 170px;
+  right: 8%;
+  top: 55%;
+  width: 170px;
 }
 
 .map-card,
@@ -336,6 +522,26 @@ select:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.analysis-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.analysis-grid .score-panel,
+.analysis-grid .route-results {
+  grid-column: 1 / -1;
+}
+
+.factor-grid.compact {
+  margin-top: 1rem;
+}
+
+.factor-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .pill {
   background: #edf7f5;
   border-radius: 8px;
@@ -387,6 +593,64 @@ dd {
 .status-text {
   color: #0c766c;
   font-weight: 700;
+}
+
+.heatmap-panel,
+.community-list,
+.alert-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.heatmap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.heatmap-legend span {
+  align-items: center;
+  color: #53605d;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 0.4rem;
+}
+
+.heatmap-legend i {
+  border-radius: 50%;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.legend-critical {
+  background: #e85d5d;
+}
+
+.legend-high {
+  background: #ffd166;
+}
+
+.legend-medium {
+  background: #12a594;
+}
+
+.community-card,
+.alert-row {
+  align-items: center;
+  background: #f7faf9;
+  border: 1px solid #dde6e3;
+  border-radius: 8px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.9rem;
+}
+
+.community-card p,
+.alert-row span {
+  color: #65716f;
+  margin: 0;
 }
 
 .table-wrap {
@@ -442,10 +706,21 @@ th {
   }
 
   .page-grid,
+  .map-workspace,
   .report-layout,
   .profile-grid,
+  .analysis-grid,
   .factor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .map-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mode-switch {
+    justify-content: flex-start;
   }
 }
 
@@ -465,6 +740,12 @@ th {
 
   .map-surface {
     min-height: 330px;
+  }
+
+  .mapbox-shell,
+  .mapbox-container,
+  .mapbox-token-empty {
+    min-height: 430px;
   }
 
   .score-panel,

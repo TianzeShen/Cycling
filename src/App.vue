@@ -5,14 +5,12 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 
 const navItems = [
-  { label: 'Assess', to: '/' },
-  { label: 'Routes', to: '/routes' },
+  { label: 'Map', to: '/' },
   { label: 'Report', to: '/report' },
-  { label: 'Community', to: '/community' },
   { label: 'Profile', to: '/profile' },
 ]
 
-const pageLabel = computed(() => navItems.find((item) => item.to === route.path)?.label || 'Assess')
+const pageLabel = computed(() => navItems.find((item) => item.to === route.path)?.label || 'Map')
 </script>
 
 <template>

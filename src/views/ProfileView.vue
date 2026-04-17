@@ -7,7 +7,7 @@ import { badges } from '../data/mockData'
     <article class="panel profile-summary">
       <span class="eyebrow">Contribution impact</span>
       <h2>426 safety points</h2>
-      <p>18 reports submitted · 64 validations received · 9 routes improved</p>
+      <p>18 reports submitted - 64 validations received - 9 routes improved</p>
     </article>
 
     <article v-for="badge in badges" :key="badge.name" class="panel badge-card">

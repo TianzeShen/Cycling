@@ -1,16 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import AssessView from './views/AssessView.vue'
-import RoutesView from './views/RoutesView.vue'
-import ReportView from './views/ReportView.vue'
-import CommunityView from './views/CommunityView.vue'
-import ProfileView from './views/ProfileView.vue'
 
 const routes = [
-  { path: '/', name: 'assess', component: AssessView },
-  { path: '/routes', name: 'routes', component: RoutesView },
-  { path: '/report', name: 'report', component: ReportView },
-  { path: '/community', name: 'community', component: CommunityView },
-  { path: '/profile', name: 'profile', component: ProfileView },
+  { path: '/', name: 'map', component: () => import('./views/MapView.vue') },
+  { path: '/map', redirect: '/' },
+  { path: '/report', name: 'report', component: () => import('./views/ReportView.vue') },
+  { path: '/profile', name: 'profile', component: () => import('./views/ProfileView.vue') },
 ]
 
 export default createRouter({
