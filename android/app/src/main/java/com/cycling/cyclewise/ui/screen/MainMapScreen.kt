@@ -63,6 +63,13 @@ import org.osmdroid.util.GeoPoint
 private val MelbourneCenter = GeoPoint(-37.8136, 144.9631)
 private val MonashClaytonCenter = GeoPoint(-37.9110, 145.1340)
 
+private enum class MapMode {
+    RouteInput,
+    RouteAnalysis,
+    HeatmapPanel,
+    HeatmapMapOnly
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainMapScreen(
@@ -72,9 +79,8 @@ fun MainMapScreen(
     val context = LocalContext.current
     val scaffoldState = rememberBottomSheetScaffoldState()
     val coroutineScope = rememberCoroutineScope()
-    var isHeatmapMode by rememberSaveable { mutableStateOf(false) }
-    var isBottomPanelVisible by rememberSaveable { mutableStateOf(false) }
-    var wasBottomPanelVisibleBeforeHeatmap by rememberSaveable { mutableStateOf(false) }
+    var mapMode by rememberSaveable { mutableStateOf(MapMode.RouteInput) }
+    var routeModeBeforeHeatmap by rememberSaveable { mutableStateOf(MapMode.RouteInput) }
     var selectedHeatmapRisk by rememberSaveable { mutableStateOf<RiskLevel?>(null) }
     var startPoint by rememberSaveable { mutableStateOf("") }
     var destination by rememberSaveable { mutableStateOf("") }
@@ -99,8 +105,12 @@ fun MainMapScreen(
             selectedHeatmapRisk == null || report.riskLevel == selectedHeatmapRisk
         }
     }
+    val isHeatmapMode = mapMode == MapMode.HeatmapPanel || mapMode == MapMode.HeatmapMapOnly
+    val showBottomPanel = mapMode == MapMode.RouteAnalysis || mapMode == MapMode.HeatmapPanel
+    val showSearchOverlay = mapMode == MapMode.RouteInput || mapMode == MapMode.RouteAnalysis
 
     fun loadMelbourneSa2Heatmap() {
+        if (heatmapRegions.isNotEmpty() || isHeatmapLoading) return
         coroutineScope.launch {
             isHeatmapLoading = true
             runCatching { CyclingApiClient.getMelbourneSa2Heatmap() }
@@ -141,8 +151,17 @@ fun MainMapScreen(
         lastRequest = null
     }
 
-    LaunchedEffect(isBottomPanelVisible) {
-        onBottomPanelVisibilityChange(isBottomPanelVisible)
+    fun closeRouteAnalysis() {
+        clearRouteEvaluation()
+        mapMode = MapMode.RouteInput
+    }
+
+    fun closeHeatmapPanel() {
+        mapMode = MapMode.HeatmapMapOnly
+    }
+
+    LaunchedEffect(showBottomPanel) {
+        onBottomPanelVisibilityChange(showBottomPanel)
     }
 
     fun updateUserLocation(location: GeoPoint?) {
@@ -206,13 +225,13 @@ fun MainMapScreen(
     BottomSheetScaffold(
         modifier = modifier.fillMaxSize(),
         scaffoldState = scaffoldState,
-        sheetPeekHeight = if (isBottomPanelVisible) 72.dp else 0.dp,
+        sheetPeekHeight = if (showBottomPanel) 72.dp else 0.dp,
         sheetShape = RoundedCornerShape(topStart = UiTokens.Radius, topEnd = UiTokens.Radius),
         sheetContainerColor = MaterialTheme.colorScheme.surface,
         sheetShadowElevation = 10.dp,
         sheetDragHandle = null,
         sheetContent = {
-            if (isBottomPanelVisible) {
+            if (showBottomPanel) {
                 MainMapBottomSheet(
                     isHeatmapMode = isHeatmapMode,
                     feasibilityState = feasibilityState,
@@ -225,9 +244,10 @@ fun MainMapScreen(
                     selectedHeatmapRisk = selectedHeatmapRisk,
                     onHeatmapRiskChange = { selectedHeatmapRisk = it },
                     onClose = {
-                        isBottomPanelVisible = false
-                        if (!isHeatmapMode) {
-                            clearRouteEvaluation()
+                        if (isHeatmapMode) {
+                            closeHeatmapPanel()
+                        } else {
+                            closeRouteAnalysis()
                         }
                         coroutineScope.launch {
                             scaffoldState.bottomSheetState.partialExpand()
@@ -287,7 +307,7 @@ fun MainMapScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            if (!isHeatmapMode) {
+            if (showSearchOverlay) {
                 LocationSearchOverlay(
                     startPoint = startPoint,
                     onStartPointChange = {
@@ -327,7 +347,7 @@ fun MainMapScreen(
                         }
                     },
                     onEvaluate = {
-                        isBottomPanelVisible = true
+                        mapMode = MapMode.RouteAnalysis
                         coroutineScope.launch {
                             feasibilityState = FeasibilityUiState.Loading
                             routingState = RoutingUiState.Empty
@@ -386,16 +406,12 @@ fun MainMapScreen(
                 text = if (isHeatmapMode) "Route" else "Heatmap",
                 active = isHeatmapMode,
                 onClick = {
-                    val nextHeatmapMode = !isHeatmapMode
-                    if (nextHeatmapMode) {
-                        wasBottomPanelVisibleBeforeHeatmap = isBottomPanelVisible
-                        loadMelbourneSa2Heatmap()
-                    }
-                    isHeatmapMode = nextHeatmapMode
-                    isBottomPanelVisible = if (nextHeatmapMode) {
-                        true
+                    if (isHeatmapMode) {
+                        mapMode = routeModeBeforeHeatmap
                     } else {
-                        wasBottomPanelVisibleBeforeHeatmap
+                        routeModeBeforeHeatmap = mapMode
+                        loadMelbourneSa2Heatmap()
+                        mapMode = MapMode.HeatmapPanel
                     }
                     coroutineScope.launch {
                         scaffoldState.bottomSheetState.partialExpand()
