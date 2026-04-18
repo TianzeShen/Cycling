@@ -1,9 +1,35 @@
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   result: {
     type: Object,
     required: true,
   },
+})
+
+const scoreColor = computed(() => {
+  if (props.result.score >= 80) {
+    return 'var(--primary)'
+  }
+
+  if (props.result.score >= 50) {
+    return '#f59e0b'
+  }
+
+  return '#ef4444'
+})
+
+const scoreLabel = computed(() => {
+  if (props.result.score >= 80) {
+    return 'Optimal Route'
+  }
+
+  if (props.result.score >= 50) {
+    return 'Caution Advised'
+  }
+
+  return 'High Risk'
 })
 </script>
 
@@ -13,16 +39,14 @@ defineProps({
       <div>
         <h3>Feasibility Score</h3>
         <div class="score-value">
-          {{ result.score }}<span>/100</span>
+          <span :style="{ color: scoreColor }">{{ result.score }}</span>
+          <span class="score-total">/100</span>
         </div>
       </div>
-      <div
-        class="score-dot"
-        :style="{ background: result.score >= 80 ? 'var(--primary)' : '#f59e0b' }"
-      ></div>
+      <div class="score-dot" :style="{ background: scoreColor }"></div>
     </div>
 
-    <h2>{{ result.score >= 80 ? 'Optimal Route' : 'Caution Advised' }}</h2>
+    <h2>{{ scoreLabel }}</h2>
     <p>{{ result.warning_message || 'Connected infrastructure makes cycling practical.' }}</p>
   </div>
 </template>
@@ -43,6 +67,7 @@ defineProps({
 .score-panel-vibrant h3 {
   color: #94a3b8;
   font-size: 0.8rem;
+  font-weight: 800;
   margin-bottom: 0.5rem;
   text-transform: uppercase;
 }
@@ -54,7 +79,7 @@ defineProps({
   margin-bottom: 1rem;
 }
 
-.score-value span {
+.score-total {
   color: #94a3b8;
   font-size: 1.5rem;
 }

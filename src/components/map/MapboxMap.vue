@@ -47,6 +47,10 @@ const mapReady = ref(false)
 const geolocate = ref(null)
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
+const MELBOURNE_BOUNDS = [
+  [144.4, -38.3],
+  [145.6, -37.4],
+]
 
 const hasToken = computed(() => Boolean(token) && token.startsWith('pk.'))
 
@@ -131,7 +135,19 @@ function setLayerVisibility(id, visible) {
   }
 }
 
+function updateRouteData() {
+  if (!mapReady.value) {
+    return
+  }
+
+  setSourceData('route-segments', getRouteCollection())
+}
+
 function updateMarkers() {
+  if (!mapReady.value) {
+    return
+  }
+
   const features = [pointToFeature(props.startPoint, { label: 'Start', kind: 'start' })]
 
   if (props.endPoint) {
@@ -144,18 +160,29 @@ function updateMarkers() {
   })
 }
 
-function updateLayers() {
+function updateHeatmapData() {
+  if (!mapReady.value) {
+    return
+  }
+
+  setSourceData('sa2-heatmap-regions', getSa2HeatmapCollection())
+  setSourceData('community-reports', getReportCollection())
+}
+
+function updateAlertData() {
+  if (!mapReady.value) {
+    return
+  }
+
+  setSourceData('route-alerts', getAlertCollection())
+}
+
+function updateLayerVisibility() {
   if (!mapReady.value) {
     return
   }
 
   const isHeatmap = props.mode === 'heatmap'
-
-  setSourceData('route-segments', getRouteCollection())
-  setSourceData('sa2-heatmap-regions', getSa2HeatmapCollection())
-  setSourceData('community-reports', getReportCollection())
-  setSourceData('route-alerts', getAlertCollection())
-  updateMarkers()
 
   setLayerVisibility('route-segment-lines', !isHeatmap)
   setLayerVisibility('route-points', !isHeatmap)
@@ -166,10 +193,19 @@ function updateLayers() {
   setLayerVisibility('community-circles', isHeatmap)
 }
 
+function updateLayers() {
+  updateRouteData()
+  updateHeatmapData()
+  updateAlertData()
+  updateMarkers()
+  updateLayerVisibility()
+}
+
 function addMapSources() {
   map.value.addSource('route-segments', {
     type: 'geojson',
     data: getRouteCollection(),
+    tolerance: 0.8,
   })
 
   map.value.addSource('route-points', {
@@ -180,6 +216,7 @@ function addMapSources() {
   map.value.addSource('sa2-heatmap-regions', {
     type: 'geojson',
     data: getSa2HeatmapCollection(),
+    tolerance: 1.2,
   })
 
   map.value.addSource('route-alerts', {
@@ -324,7 +361,7 @@ function addMapLayers() {
 }
 
 function addMapControls() {
-  map.value.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right')
+  map.value.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right')
 
   geolocate.value = new mapboxgl.GeolocateControl({
     fitBoundsOptions: {
@@ -345,7 +382,7 @@ function addMapControls() {
     })
   })
 
-  map.value.addControl(geolocate.value, 'top-right')
+  map.value.addControl(geolocate.value, 'bottom-right')
 }
 
 onMounted(() => {
@@ -366,6 +403,9 @@ onMounted(() => {
     pitchWithRotate: false,
     renderWorldCopies: false,
     touchPitch: false,
+    maxBounds: MELBOURNE_BOUNDS,
+    minZoom: 9,
+    maxZoom: 18,
   })
 
   addMapControls()
@@ -390,24 +430,37 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [
-    props.mode,
-    props.routeSegments,
-    props.heatmapRegions,
-    props.alerts,
-    props.startPoint,
-    props.endPoint,
-    props.reports,
-  ],
-  updateLayers,
+  () => props.mode,
+  updateLayerVisibility,
+)
+
+watch(
+  () => props.routeSegments,
+  updateRouteData,
   { deep: true },
 )
 
 watch(
-  () => props.startPoint,
-  () => {
-    updateMarkers()
-  },
+  () => props.heatmapRegions,
+  updateHeatmapData,
+  { deep: true },
+)
+
+watch(
+  () => props.reports,
+  updateHeatmapData,
+  { deep: true },
+)
+
+watch(
+  () => props.alerts,
+  updateAlertData,
+  { deep: true },
+)
+
+watch(
+  () => [props.startPoint, props.endPoint],
+  updateMarkers,
   { deep: true },
 )
 </script>

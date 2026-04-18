@@ -343,64 +343,91 @@ onMounted(() => {
     </div>
 
     <aside class="map-side-panel">
-      <form v-if="showRouteControls" class="glass-panel journey-form" @submit.prevent="evaluateJourney">
-        <div>
+      <form v-if="showRouteControls" class="glass-panel compact-planner" @submit.prevent="evaluateJourney">
+        <div class="planner-header">
           <h2>Trip Planner</h2>
           <p>Find the safest path.</p>
         </div>
 
-        <div class="suggestion-field">
-          <label>Origin</label>
-          <input
-            v-model="start"
-            type="text"
-            placeholder="Current Location"
-            autocomplete="off"
-            @input="queueAddressSearch('start', start)"
-            @focus="activeSearchField = 'start'"
-          />
-          <ul v-if="activeSearchField === 'start' && startSuggestions.length" class="suggestion-list">
-            <li v-for="suggestion in startSuggestions" :key="suggestion.id">
-              <button type="button" @click="selectSuggestion('start', suggestion)">
-                {{ suggestion.label }}
+        <div class="route-inputs-group">
+          <div class="route-connector">
+            <div class="dot origin-dot"></div>
+            <div class="line"></div>
+            <div class="dot dest-dot"></div>
+          </div>
+
+          <div class="inputs-container">
+            <div class="input-wrapper">
+              <input
+                v-model="start"
+                type="text"
+                placeholder="Current Location"
+                autocomplete="off"
+                @input="queueAddressSearch('start', start)"
+                @focus="activeSearchField = 'start'"
+              />
+              <button
+                v-if="isInitialLocationResolved"
+                type="button"
+                class="icon-btn locate-btn"
+                title="Use current location"
+                @click="useCurrentLocationAsStart"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+                </svg>
               </button>
-            </li>
-          </ul>
+
+              <ul v-if="activeSearchField === 'start' && startSuggestions.length" class="suggestion-list">
+                <li v-for="suggestion in startSuggestions" :key="suggestion.id">
+                  <button type="button" @click="selectSuggestion('start', suggestion)">
+                    {{ suggestion.label }}
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div class="input-divider"></div>
+
+            <div class="input-wrapper">
+              <input
+                v-model="destination"
+                type="text"
+                placeholder="Where to?"
+                autocomplete="off"
+                @input="queueAddressSearch('destination', destination)"
+                @focus="activeSearchField = 'destination'"
+              />
+
+              <ul
+                v-if="activeSearchField === 'destination' && destinationSuggestions.length"
+                class="suggestion-list"
+              >
+                <li v-for="suggestion in destinationSuggestions" :key="suggestion.id">
+                  <button type="button" @click="selectSuggestion('destination', suggestion)">
+                    {{ suggestion.label }}
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
 
-        <button
-          v-if="isInitialLocationResolved"
-          type="button"
-          class="secondary inline-action"
-          @click="useCurrentLocationAsStart"
-        >
-          Use current location
-        </button>
-
-        <div class="suggestion-field">
-          <label>Destination</label>
-          <input
-            v-model="destination"
-            type="text"
-            placeholder="Where to?"
-            autocomplete="off"
-            @input="queueAddressSearch('destination', destination)"
-            @focus="activeSearchField = 'destination'"
-          />
-          <ul v-if="activeSearchField === 'destination' && destinationSuggestions.length" class="suggestion-list">
-            <li v-for="suggestion in destinationSuggestions" :key="suggestion.id">
-              <button type="button" @click="selectSuggestion('destination', suggestion)">
-                {{ suggestion.label }}
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        <button type="submit" class="primary full-width-action" :disabled="isLoading || !isInitialLocationResolved">
+        <button type="submit" class="primary glow-btn" :disabled="isLoading || !isInitialLocationResolved">
           {{ isLoading ? 'Computing...' : 'Generate Route' }}
         </button>
         <p v-if="isSearching" class="helper-text">Searching addresses...</p>
-        <p v-if="errorMessage" class="status-text">{{ errorMessage }}</p>
+        <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
       </form>
 
       <section v-if="showHeatmapPanel" class="glass-panel heatmap-panel">
@@ -424,20 +451,37 @@ onMounted(() => {
           </article>
         </div>
       </section>
-    </aside>
 
-    <div class="analysis-bottom">
-      <transition name="fade">
-        <section v-if="showAnalysis" class="analysis-grid">
+      <transition name="slide-up">
+        <div v-if="showAnalysis" class="analysis-stack">
           <ScorePanel :result="result" />
-          <div class="glass-panel">
-            <h3 class="panel-kicker">Route Overview</h3>
-            <div class="route-list route-list-horizontal">
+
+          <div class="glass-panel compact-overview">
+            <div class="overview-header">
+              <h3>Route Overview</h3>
+              <button class="icon-btn close-btn" title="Clear route" @click="result = null">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="route-cards-vertical">
               <RouteCard v-for="route in routes" :key="route.id" :route="route" />
             </div>
           </div>
-        </section>
+        </div>
       </transition>
-    </div>
+    </aside>
   </section>
 </template>

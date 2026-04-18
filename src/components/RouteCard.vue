@@ -8,50 +8,34 @@ defineProps({
 </script>
 
 <template>
-  <article class="route-card-vibrant">
+  <article class="route-card-dynamic" :class="`bg-${route.tone}`">
     <div class="route-card-main">
-      <div
-        class="route-dot"
-        :style="{
-          background:
-            route.tone === 'green' ? 'var(--primary)' : route.tone === 'yellow' ? '#f59e0b' : '#ef4444',
-        }"
-      ></div>
+      <div class="route-dot"></div>
       <div>
         <h3>{{ route.name }}</h3>
         <p>{{ route.distance }} · {{ route.time }}</p>
       </div>
     </div>
-    <div
-      class="pill"
-      :style="{
-        background: route.tone === 'green' ? 'rgba(0, 242, 152, 0.15)' : 'rgba(239, 68, 68, 0.1)',
-        color: route.tone === 'green' ? 'var(--primary-hover)' : '#ef4444',
-      }"
-    >
+    <div class="pill">
       {{ route.risk }}
     </div>
   </article>
 </template>
 
 <style scoped>
-.route-card-vibrant {
+.route-card-dynamic {
   align-items: flex-start;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
   display: flex;
-  flex: 1;
   flex-direction: column;
   justify-content: space-between;
-  min-width: 0;
   padding: 1.2rem;
-  transition: 0.3s;
+  transition: transform 0.3s, box-shadow 0.3s;
 }
 
-.route-card-vibrant:hover {
-  background: #ffffff;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+.route-card-dynamic:hover {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
   transform: translateY(-3px);
 }
 
@@ -62,27 +46,48 @@ defineProps({
 }
 
 .route-dot {
+  background: currentColor;
   border-radius: 50%;
   height: 10px;
-  flex: 0 0 10px;
+  opacity: 0.5;
   width: 10px;
 }
 
 h3 {
-  color: var(--dark);
   font-size: 1rem;
+  font-weight: 700;
   margin-bottom: 0.2rem;
 }
 
 p {
-  color: var(--text-muted);
+  color: inherit;
   font-size: 0.85rem;
   margin: 0;
+  opacity: 0.8;
+}
+
+.bg-green {
+  background: var(--primary);
+  color: var(--dark);
+}
+
+.bg-yellow {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.bg-red {
+  background: #ef4444;
+  color: #ffffff;
 }
 
 .pill {
   align-self: flex-end;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.25);
   border-radius: 8px;
+  color: inherit;
   font-size: 0.75rem;
   font-weight: 800;
   margin-top: 1rem;
