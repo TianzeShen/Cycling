@@ -313,37 +313,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="map-page">
-    <div class="map-toolbar panel">
-      <div>
-        <span class="eyebrow">Core map workspace</span>
-        <h2>Plan safer cycling trips in one place</h2>
-        <p class="helper-text">SA2 safety layer uses backend heatmap regions.</p>
-      </div>
-
-      <div class="mode-switch" aria-label="Map mode controls">
-        <button type="button" :class="{ secondary: isHeatmapMode }" @click="showRouteMode">
-          Route
-        </button>
-        <button
-          type="button"
-          :class="{ secondary: !isHeatmapMode }"
-          @click="showHeatmapPanelMode"
-        >
-          {{ isHeatmapLoading ? 'Loading heatmap...' : 'Heatmap' }}
-        </button>
-        <button
-          v-if="isHeatmapMode"
-          type="button"
-          class="secondary"
-          @click="showHeatmapMapOnlyMode"
-        >
-          Map only
-        </button>
-      </div>
-    </div>
-
-    <div class="map-workspace">
+  <section class="map-view-wrapper">
+    <div class="mapbox-shell">
       <MapboxMap
         v-if="isInitialLocationResolved"
         :mode="mapDisplayMode"
@@ -355,153 +326,118 @@ onMounted(() => {
         :reports="[]"
         @location-found="handleLocationFound"
       />
-      <section v-else class="mapbox-shell locating-panel">
-        <div class="panel mapbox-token-empty">
-          <span class="eyebrow">Finding your location</span>
-          <h2>Preparing your map</h2>
-          <p>Allow browser location access to start from your current position.</p>
-        </div>
-      </section>
-
-      <aside class="map-side-panel">
-        <form v-if="showRouteControls" class="panel journey-form" @submit.prevent="evaluateJourney">
-          <span class="eyebrow">Route mode</span>
-          <div class="suggestion-field">
-            <label>
-              Start location
-              <input
-                v-model="start"
-                type="text"
-                placeholder="Start location"
-                autocomplete="off"
-                @input="queueAddressSearch('start', start)"
-                @focus="activeSearchField = 'start'"
-              />
-            </label>
-            <ul v-if="activeSearchField === 'start' && startSuggestions.length" class="suggestion-list">
-              <li v-for="suggestion in startSuggestions" :key="suggestion.id">
-                <button type="button" @click="selectSuggestion('start', suggestion)">
-                  <span>{{ suggestion.label }}</span>
-                  <em v-if="suggestion.address">{{ suggestion.address }}</em>
-                  <small>{{ suggestion.type }}</small>
-                </button>
-              </li>
-            </ul>
-          </div>
-          <button
-            v-if="isInitialLocationResolved"
-            type="button"
-            class="secondary inline-action"
-            @click="useCurrentLocationAsStart"
-          >
-            Use current location
-          </button>
-
-          <div class="suggestion-field">
-            <label>
-              Destination location
-              <input
-                v-model="destination"
-                type="text"
-                placeholder="Destination"
-                autocomplete="off"
-                @input="queueAddressSearch('destination', destination)"
-                @focus="activeSearchField = 'destination'"
-              />
-            </label>
-            <ul
-              v-if="activeSearchField === 'destination' && destinationSuggestions.length"
-              class="suggestion-list"
-            >
-              <li v-for="suggestion in destinationSuggestions" :key="suggestion.id">
-                <button type="button" @click="selectSuggestion('destination', suggestion)">
-                  <span>{{ suggestion.label }}</span>
-                  <em v-if="suggestion.address">{{ suggestion.address }}</em>
-                  <small>{{ suggestion.type }}</small>
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          <p class="helper-text">{{ locationStatus }}</p>
-
-          <button type="submit" :disabled="isLoading || !isInitialLocationResolved">
-            {{ isLoading ? 'Evaluating...' : 'Evaluate' }}
-          </button>
-          <p v-if="isSearching" class="helper-text">Searching addresses...</p>
-          <p v-if="errorMessage" class="status-text">{{ errorMessage }}</p>
-        </form>
-
-        <section v-if="showHeatmapPanel" class="panel heatmap-panel">
-          <span class="eyebrow">SA2 safety layer</span>
-          <h2>Melbourne heatmap regions</h2>
-          <p>
-            Backend connected via <code>/api/heatmap/melbourne-sa2</code>.
-            {{ heatmapRegions.length }} SA2 regions loaded.
-          </p>
-          <p v-if="heatmapError" class="status-text">{{ heatmapError }}</p>
-
-          <div class="heatmap-legend" aria-label="Heatmap legend">
-            <span><i class="legend-critical"></i> Critical</span>
-            <span><i class="legend-high"></i> High</span>
-            <span><i class="legend-medium"></i> Medium</span>
-          </div>
-
-          <span class="eyebrow">Demo community reports</span>
-          <p class="helper-text">
-            This report list is mock/demo data until a reports endpoint is available.
-          </p>
-          <div class="community-list">
-            <article v-for="report in communityReports" :key="report.id" class="community-card">
-              <div>
-                <span class="pill">{{ report.status }}</span>
-                <h3>{{ report.type }}</h3>
-                <p>{{ report.area }}</p>
-              </div>
-              <strong>{{ report.votes }}</strong>
-            </article>
-          </div>
-        </section>
-      </aside>
+      <div v-else class="glass-panel locating-panel">
+        <h2>Locating...</h2>
+        <p>Requesting GPS access</p>
+      </div>
     </div>
 
-    <section v-if="showAnalysis" class="analysis-grid">
-      <ScorePanel :result="result" />
+    <div class="floating-controls" aria-label="Map mode controls">
+      <button type="button" :class="{ secondary: isHeatmapMode }" @click="showRouteMode">Route</button>
+      <button type="button" :class="{ secondary: !isHeatmapMode }" @click="showHeatmapPanelMode">
+        {{ isHeatmapLoading ? 'Loading...' : 'Heatmap' }}
+      </button>
+      <button v-if="isHeatmapMode" type="button" class="secondary" @click="showHeatmapMapOnlyMode">
+        Map Only
+      </button>
+    </div>
 
-      <div class="panel">
-        <span class="eyebrow">Why this score</span>
-        <div class="factor-grid compact">
-          <article v-for="item in result.explanations" :key="item.factor" class="factor-card">
-            <span class="pill">{{ item.impact }} impact</span>
-            <h3>{{ item.factor }}</h3>
+    <aside class="map-side-panel">
+      <form v-if="showRouteControls" class="glass-panel journey-form" @submit.prevent="evaluateJourney">
+        <div>
+          <h2>Trip Planner</h2>
+          <p>Find the safest path.</p>
+        </div>
+
+        <div class="suggestion-field">
+          <label>Origin</label>
+          <input
+            v-model="start"
+            type="text"
+            placeholder="Current Location"
+            autocomplete="off"
+            @input="queueAddressSearch('start', start)"
+            @focus="activeSearchField = 'start'"
+          />
+          <ul v-if="activeSearchField === 'start' && startSuggestions.length" class="suggestion-list">
+            <li v-for="suggestion in startSuggestions" :key="suggestion.id">
+              <button type="button" @click="selectSuggestion('start', suggestion)">
+                {{ suggestion.label }}
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <button
+          v-if="isInitialLocationResolved"
+          type="button"
+          class="secondary inline-action"
+          @click="useCurrentLocationAsStart"
+        >
+          Use current location
+        </button>
+
+        <div class="suggestion-field">
+          <label>Destination</label>
+          <input
+            v-model="destination"
+            type="text"
+            placeholder="Where to?"
+            autocomplete="off"
+            @input="queueAddressSearch('destination', destination)"
+            @focus="activeSearchField = 'destination'"
+          />
+          <ul v-if="activeSearchField === 'destination' && destinationSuggestions.length" class="suggestion-list">
+            <li v-for="suggestion in destinationSuggestions" :key="suggestion.id">
+              <button type="button" @click="selectSuggestion('destination', suggestion)">
+                {{ suggestion.label }}
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <button type="submit" class="primary full-width-action" :disabled="isLoading || !isInitialLocationResolved">
+          {{ isLoading ? 'Computing...' : 'Generate Route' }}
+        </button>
+        <p v-if="isSearching" class="helper-text">Searching addresses...</p>
+        <p v-if="errorMessage" class="status-text">{{ errorMessage }}</p>
+      </form>
+
+      <section v-if="showHeatmapPanel" class="glass-panel heatmap-panel">
+        <h2>Safety Layer</h2>
+        <p>{{ heatmapRegions.length }} SA2 regions loaded.</p>
+        <p v-if="heatmapError" class="status-text">{{ heatmapError }}</p>
+
+        <div class="heatmap-legend" aria-label="Heatmap legend">
+          <span><i class="legend-critical"></i> Critical</span>
+          <span><i class="legend-high"></i> High</span>
+          <span><i class="legend-medium"></i> Safe</span>
+        </div>
+
+        <div class="community-list">
+          <article v-for="report in communityReports" :key="report.id" class="community-card-minimal">
+            <div>
+              <h3>{{ report.type }}</h3>
+              <p>{{ report.area }}</p>
+            </div>
+            <span class="pill pill-red">{{ report.votes }} votes</span>
           </article>
         </div>
-      </div>
+      </section>
+    </aside>
 
-      <div class="panel route-results">
-        <span class="eyebrow">Recommended routes</span>
-        <div class="route-list">
-          <RouteCard v-for="route in routes" :key="route.id" :route="route" />
-        </div>
-      </div>
-
-      <div class="panel">
-        <span class="eyebrow">Warnings and alerts</span>
-        <div class="alert-list">
-          <article v-for="alert in routeAlerts" :key="alert.message || alert.title" class="alert-row">
-            <strong>{{ alert.message || alert.title }}</strong>
-            <span v-if="alert.location">{{ formatAlertLocation(alert.location) }}</span>
-          </article>
-          <article v-if="!routeAlerts.length" class="alert-row">
-            <strong>Disconnected lane in 200m</strong>
-            <span>Swanston Street</span>
-          </article>
-          <article v-if="!routeAlerts.length" class="alert-row">
-            <strong>High traffic exposure near crossing</strong>
-            <span>Flinders Street</span>
-          </article>
-        </div>
-      </div>
-    </section>
+    <div class="analysis-bottom">
+      <transition name="fade">
+        <section v-if="showAnalysis" class="analysis-grid">
+          <ScorePanel :result="result" />
+          <div class="glass-panel">
+            <h3 class="panel-kicker">Route Overview</h3>
+            <div class="route-list route-list-horizontal">
+              <RouteCard v-for="route in routes" :key="route.id" :route="route" />
+            </div>
+          </div>
+        </section>
+      </transition>
+    </div>
   </section>
 </template>
