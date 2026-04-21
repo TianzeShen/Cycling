@@ -8,6 +8,8 @@ const props = defineProps({
   },
 })
 
+const emit = defineEmits(['close'])
+
 const scoreColor = computed(() => {
   if (props.result.score >= 80) {
     return 'var(--primary)'
@@ -43,7 +45,25 @@ const scoreLabel = computed(() => {
           <span class="score-total">/100</span>
         </div>
       </div>
-      <div class="score-dot" :style="{ background: scoreColor }"></div>
+      <div class="score-actions">
+        <div class="score-dot" :style="{ background: scoreColor }"></div>
+        <button class="score-close-btn" title="Clear route" @click="emit('close')">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <h2>{{ scoreLabel }}</h2>
@@ -88,6 +108,29 @@ const scoreLabel = computed(() => {
   border-radius: 50%;
   height: 12px;
   width: 12px;
+}
+
+.score-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.score-close-btn {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 50%;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  padding: 0.45rem;
+}
+
+.score-close-btn:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ffffff;
 }
 
 .score-panel-vibrant h2 {
