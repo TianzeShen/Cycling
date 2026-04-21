@@ -959,6 +959,92 @@ code {
   gap: 0.8rem;
 }
 
+.feasibility-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.feasibility-card {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 0.95rem 1rem;
+}
+
+.feasibility-copy h4 {
+  font-size: 0.95rem;
+  font-weight: 800;
+  margin-bottom: 0.3rem;
+}
+
+.feasibility-copy p {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.feasibility-high {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.feasibility-medium {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.feasibility-low {
+  background: var(--primary);
+  color: var(--dark);
+}
+
+.feasibility-neutral {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: var(--dark);
+}
+
+.feasibility-high .feasibility-copy h4,
+.feasibility-medium .feasibility-copy h4,
+.feasibility-high .feasibility-copy p,
+.feasibility-medium .feasibility-copy p {
+  color: #ffffff;
+}
+
+.feasibility-low .feasibility-copy h4,
+.feasibility-low .feasibility-copy p,
+.feasibility-neutral .feasibility-copy h4,
+.feasibility-neutral .feasibility-copy p {
+  color: inherit;
+}
+
+.impact-badge {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.35rem 0.7rem;
+}
+
+.impact-high {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+.impact-medium {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+.impact-low {
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--dark);
+}
+
+.impact-neutral {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
 .slide-up-enter-active,
 .slide-up-leave-active {
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);

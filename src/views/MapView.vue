@@ -41,6 +41,7 @@ const errorMessage = ref('')
 const result = ref(null)
 const routes = ref([])
 const routeAlerts = ref([])
+const routeAlertsStatusMessage = ref('')
 const routeSegments = ref([])
 const heatmapRegions = ref([])
 const communityReports = ref(demoCommunityReports)
@@ -63,42 +64,29 @@ function riskTone(riskLevel) {
   return 'green'
 }
 
-function buildRouteCards(segments, alerts) {
+function buildRouteCards(segments, alerts, alertsStatusMessage = '') {
   if (!segments.length) {
     return []
   }
-
-  const riskRank = { green: 1, yellow: 2, red: 3 }
-  const highestRisk = segments.reduce((current, segment) => {
-    const tone = riskTone(segment.risk_level)
-    return riskRank[tone] > riskRank[current] ? tone : current
-  }, 'green')
 
   const gapCount = segments.filter((segment) => segment.is_gap).length
 
   return [
     {
-      id: 'recommended',
-      name: 'Recommended',
-      time: 'Route ready',
-      distance: `${segments.length} segments`,
-      risk: highestRisk.toUpperCase(),
-      tone: highestRisk,
-      summary:
-        gapCount > 0
-          ? `${gapCount} infrastructure gap${gapCount > 1 ? 's' : ''} detected along this route.`
-          : 'No infrastructure gaps detected in the returned route segments.',
-    },
-    {
       id: 'alerts',
       name: 'Warnings',
-      time: `${alerts.length} alert${alerts.length === 1 ? '' : 's'}`,
+      time:
+        gapCount > 0
+          ? `${gapCount} gap${gapCount === 1 ? '' : 's'} detected`
+          : `${alerts.length} alert${alerts.length === 1 ? '' : 's'}`,
       distance: 'Live route data',
-      risk: alerts.length,
-      tone: alerts.length ? 'yellow' : 'green',
-      summary: alerts.length
-        ? 'Review warning points before starting the trip.'
-        : 'No route warning points were returned by the backend.',
+      risk: gapCount > 0 ? gapCount : alerts.length,
+      tone: gapCount > 0 || alerts.length ? 'yellow' : 'green',
+      summary: gapCount > 0
+        ? 'Infrastructure gaps detected along the recommended route.'
+        : alerts.length
+        ? alerts[0].message
+        : alertsStatusMessage || 'No route warning points were returned by the backend.',
     },
   ]
 }
@@ -109,6 +97,45 @@ function formatAlertLocation(location) {
   }
 
   return `${location[0].toFixed(4)}, ${location[1].toFixed(4)}`
+}
+
+function normaliseRouteAlerts(routeResponse) {
+  const alerts = routeResponse.alerts || []
+  const gapCount = (routeResponse.route_segments || []).filter((segment) => segment.is_gap).length
+
+  if (alerts.length) {
+    return alerts
+  }
+
+  if (gapCount > 0) {
+    return [
+      {
+        level: 'Red',
+        location: null,
+        message: `${gapCount} infrastructure gap${gapCount > 1 ? 's' : ''} detected along the route.`,
+      },
+    ]
+  }
+
+  return []
+}
+
+function insightImpactTone(impact) {
+  const value = String(impact || '').toLowerCase()
+
+  if (value.includes('high')) {
+    return 'high'
+  }
+
+  if (value.includes('medium') || value.includes('moderate')) {
+    return 'medium'
+  }
+
+  if (value.includes('low') || value.includes('good')) {
+    return 'low'
+  }
+
+  return 'neutral'
 }
 
 function queueAddressSearch(field, query) {
@@ -224,13 +251,19 @@ async function evaluateJourney() {
     ])
 
     result.value = feasibilityResponse
-    routeAlerts.value = routeResponse.alerts || []
+    routeAlerts.value = normaliseRouteAlerts(routeResponse)
+    routeAlertsStatusMessage.value = routeResponse.alerts_status_message || ''
     routeSegments.value = routeResponse.route_segments || []
-    routes.value = buildRouteCards(routeSegments.value, routeAlerts.value)
+    routes.value = buildRouteCards(
+      routeSegments.value,
+      routeAlerts.value,
+      routeAlertsStatusMessage.value,
+    )
   } catch (error) {
     result.value = null
     routes.value = []
     routeAlerts.value = []
+    routeAlertsStatusMessage.value = ''
     routeSegments.value = []
     errorMessage.value = 'Backend request failed. No route data was returned.'
   } finally {
@@ -463,9 +496,32 @@ onMounted(() => {
         <div v-if="showAnalysis" class="analysis-stack">
           <ScorePanel :result="result" />
 
+          <div v-if="result.explanations?.length" class="glass-panel compact-overview">
+            <div class="overview-header">
+              <h3>Feasibility Insights</h3>
+            </div>
+            <div class="feasibility-list">
+              <article
+                v-for="item in result.explanations"
+                :key="`${item.factor}-${item.impact}`"
+                class="feasibility-card"
+                :class="`feasibility-${insightImpactTone(item.impact)}`"
+              >
+                <div class="feasibility-copy">
+                  <h4>{{ item.factor }}</h4>
+                  <p>
+                    <span class="impact-badge" :class="`impact-${insightImpactTone(item.impact)}`">
+                      {{ item.impact }}
+                    </span>
+                  </p>
+                </div>
+              </article>
+            </div>
+          </div>
+
           <div class="glass-panel compact-overview">
             <div class="overview-header">
-              <h3>Route Overview</h3>
+              <h3>Warnings</h3>
               <button class="icon-btn close-btn" title="Clear route" @click="result = null">
                 <svg
                   width="16"
@@ -487,6 +543,7 @@ onMounted(() => {
               <RouteCard v-for="route in routes" :key="route.id" :route="route" />
             </div>
           </div>
+
         </div>
       </transition>
     </aside>
