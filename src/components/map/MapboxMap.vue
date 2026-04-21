@@ -177,6 +177,25 @@ function updateAlertData() {
   setSourceData('route-alerts', getAlertCollection())
 }
 
+function flyToDestination() {
+  if (!mapReady.value || !props.endPoint || !props.routeSegments.length || props.mode !== 'route') {
+    return
+  }
+
+  const center = toMapboxLngLat(props.endPoint)
+
+  if (!center) {
+    return
+  }
+
+  map.value.flyTo({
+    center,
+    zoom: Math.max(map.value.getZoom(), 15),
+    essential: true,
+    duration: 1200,
+  })
+}
+
 function updateLayerVisibility() {
   if (!mapReady.value) {
     return
@@ -436,7 +455,10 @@ watch(
 
 watch(
   () => props.routeSegments,
-  updateRouteData,
+  () => {
+    updateRouteData()
+    flyToDestination()
+  },
   { deep: true },
 )
 

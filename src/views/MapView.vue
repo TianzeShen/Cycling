@@ -47,6 +47,7 @@ const communityReports = ref(demoCommunityReports)
 const isHeatmapLoading = ref(false)
 const heatmapError = ref('')
 const locationStatus = ref('Locating your current position...')
+const currentLocationLabel = ref('')
 
 function riskTone(riskLevel) {
   const normalisedRisk = String(riskLevel || '').toLowerCase()
@@ -256,12 +257,13 @@ async function resolveCurrentLocationLabel() {
     const place = await reverseMapboxPlace(startCoordinate.value)
 
     if (place?.label) {
-      start.value = place.address && place.address !== place.label ? `${place.label}, ${place.address}` : place.label
+      currentLocationLabel.value =
+        place.address && place.address !== place.label ? `${place.label}, ${place.address}` : place.label
     } else {
-      start.value = 'Current location'
+      currentLocationLabel.value = 'Current location'
     }
   } catch (error) {
-    start.value = 'Current location'
+    currentLocationLabel.value = 'Current location'
   }
 }
 
@@ -275,7 +277,11 @@ function handleLocationFound(location) {
 
 async function useCurrentLocationAsStart() {
   start.value = 'Resolving current address...'
-  await resolveCurrentLocationLabel()
+  if (!currentLocationLabel.value) {
+    await resolveCurrentLocationLabel()
+  }
+
+  start.value = currentLocationLabel.value || 'Current location'
   hasStartCoordinate.value = true
   locationStatus.value = 'Using your current location as the start point.'
 }
@@ -293,6 +299,7 @@ function locateUserOnLoad() {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       })
+      resolveCurrentLocationLabel()
       isInitialLocationResolved.value = true
     },
     () => {
