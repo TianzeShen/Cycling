@@ -138,6 +138,20 @@ function insightImpactTone(impact) {
   return 'neutral'
 }
 
+function formatBackendError(error, fallbackMessage) {
+  const detail = String(error?.detail || error?.message || '').trim()
+
+  if (!detail) {
+    return fallbackMessage
+  }
+
+  if (detail.includes('422') || detail.includes('Request failed with status')) {
+    return fallbackMessage
+  }
+
+  return detail
+}
+
 function queueAddressSearch(field, query) {
   clearTimeout(searchTimers[field])
 
@@ -245,27 +259,45 @@ async function evaluateJourney() {
   }
 
   try {
-    const [feasibilityResponse, routeResponse] = await Promise.all([
+    const [feasibilityResult, routeResult] = await Promise.allSettled([
       evaluateFeasibility(payload),
       recommendRoute(payload),
     ])
 
-    result.value = feasibilityResponse
-    routeAlerts.value = normaliseRouteAlerts(routeResponse)
-    routeAlertsStatusMessage.value = routeResponse.alerts_status_message || ''
-    routeSegments.value = routeResponse.route_segments || []
-    routes.value = buildRouteCards(
-      routeSegments.value,
-      routeAlerts.value,
-      routeAlertsStatusMessage.value,
-    )
-  } catch (error) {
-    result.value = null
-    routes.value = []
-    routeAlerts.value = []
-    routeAlertsStatusMessage.value = ''
-    routeSegments.value = []
-    errorMessage.value = 'Backend request failed. No route data was returned.'
+    if (feasibilityResult.status === 'fulfilled') {
+      result.value = feasibilityResult.value
+    } else {
+      result.value = null
+    }
+
+    if (routeResult.status === 'fulfilled') {
+      routeAlerts.value = normaliseRouteAlerts(routeResult.value)
+      routeAlertsStatusMessage.value = routeResult.value.alerts_status_message || ''
+      routeSegments.value = routeResult.value.route_segments || []
+      routes.value = buildRouteCards(
+        routeSegments.value,
+        routeAlerts.value,
+        routeAlertsStatusMessage.value,
+      )
+    } else {
+      routes.value = []
+      routeAlerts.value = []
+      routeAlertsStatusMessage.value = ''
+      routeSegments.value = []
+    }
+
+    if (feasibilityResult.status === 'rejected' || routeResult.status === 'rejected') {
+      const feasibilityError =
+        feasibilityResult.status === 'rejected'
+          ? formatBackendError(feasibilityResult.reason, 'Feasibility analysis failed for the selected points.')
+          : ''
+      const routeError =
+        routeResult.status === 'rejected'
+          ? formatBackendError(routeResult.reason, 'Route generation failed for the selected points.')
+          : ''
+
+      errorMessage.value = [feasibilityError, routeError].filter(Boolean).join(' ')
+    }
   } finally {
     mode.value = result.value ? mapModes.routeAnalysis : mapModes.routeInput
     isLoading.value = false
@@ -431,7 +463,10 @@ onMounted(() => {
               <ul v-if="activeSearchField === 'start' && startSuggestions.length" class="suggestion-list">
                 <li v-for="suggestion in startSuggestions" :key="suggestion.id">
                   <button type="button" @click="selectSuggestion('start', suggestion)">
-                    {{ suggestion.label }}
+                    <span class="suggestion-copy">
+                      <span class="suggestion-title">{{ suggestion.label }}</span>
+                      <span v-if="suggestion.address" class="suggestion-address">{{ suggestion.address }}</span>
+                    </span>
                   </button>
                 </li>
               </ul>
@@ -455,7 +490,10 @@ onMounted(() => {
               >
                 <li v-for="suggestion in destinationSuggestions" :key="suggestion.id">
                   <button type="button" @click="selectSuggestion('destination', suggestion)">
-                    {{ suggestion.label }}
+                    <span class="suggestion-copy">
+                      <span class="suggestion-title">{{ suggestion.label }}</span>
+                      <span v-if="suggestion.address" class="suggestion-address">{{ suggestion.address }}</span>
+                    </span>
                   </button>
                 </li>
               </ul>
