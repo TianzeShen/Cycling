@@ -227,6 +227,138 @@ label {
   color: var(--primary);
 }
 
+.help-trigger {
+  background: rgba(15, 23, 42, 0.06);
+  box-shadow: none;
+  color: var(--text-main);
+  margin-left: 0.5rem;
+  padding: 0.6rem 1rem;
+}
+
+.help-trigger:hover {
+  background: rgba(15, 23, 42, 0.12);
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.help-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  inset: 0;
+  justify-content: flex-end;
+  padding: 1.5rem;
+  position: fixed;
+  z-index: 1200;
+}
+
+.help-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  max-height: min(720px, calc(100vh - 3rem));
+  max-width: 420px;
+  width: min(100%, 420px);
+}
+
+.help-panel-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.help-kicker {
+  color: var(--primary-hover);
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.help-panel-header h2 {
+  font-size: 1.8rem;
+  margin-bottom: 0.35rem;
+}
+
+.help-close-btn {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 50%;
+  box-shadow: none;
+  color: var(--text-main);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  height: 42px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 42px;
+}
+
+.help-close-btn:hover {
+  background: rgba(15, 23, 42, 0.14);
+  box-shadow: none;
+  transform: none;
+}
+
+.help-progress {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.help-progress-dot {
+  background: rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  flex: 1;
+  height: 7px;
+  transition: var(--transition-smooth);
+}
+
+.help-progress-dot.active {
+  background: var(--primary);
+  box-shadow: 0 0 16px rgba(0, 242, 152, 0.45);
+}
+
+.help-step-card {
+  background:
+    radial-gradient(circle at top right, rgba(0, 242, 152, 0.12), transparent 32%),
+    rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: var(--radius-lg);
+  padding: 1.3rem;
+}
+
+.help-step-index {
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.65rem;
+  text-transform: uppercase;
+}
+
+.help-step-card h3 {
+  font-size: 1.2rem;
+  margin-bottom: 0.55rem;
+}
+
+.help-panel-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.help-panel-actions button {
+  min-width: 110px;
+}
+
 .home-page-scroll {
   background: var(--bg-color);
 }
@@ -725,6 +857,17 @@ code {
   .profile-grid {
     grid-template-columns: 1fr;
   }
+
+  .help-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .help-panel {
+    max-width: 100%;
+    width: min(100%, 520px);
+  }
 }
 
 @media (max-width: 620px) {
@@ -752,6 +895,10 @@ code {
 
   .brand-logo {
     font-size: 1.15rem !important;
+  }
+
+  .help-trigger {
+    padding: 0.5rem 0.85rem;
   }
 
   .hero-content p {
@@ -786,6 +933,28 @@ code {
   .report-layout,
   .profile-grid {
     padding: 92px 1rem 1rem;
+  }
+
+  .help-overlay {
+    padding: 0.75rem;
+  }
+
+  .help-panel {
+    gap: 1rem;
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.2rem;
+  }
+
+  .help-panel-header h2 {
+    font-size: 1.45rem;
+  }
+
+  .help-panel-actions {
+    flex-direction: column-reverse;
+  }
+
+  .help-panel-actions button {
+    width: 100%;
   }
 }
 
