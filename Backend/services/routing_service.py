@@ -4,6 +4,7 @@ import os
 from math import cos, radians
 from time import perf_counter
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 try:
@@ -30,7 +31,17 @@ OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org
 OSRM_PRIMARY_PROFILE = os.getenv("RIDESMART_OSRM_PROFILE", "bike")
 OSRM_FALLBACK_PROFILE = os.getenv("RIDESMART_OSRM_FALLBACK_PROFILE", "driving")
 OSRM_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_OSRM_TIMEOUT", "8"))
-USE_OSRM_ROUTING = os.getenv("RIDESMART_USE_OSRM", "true").lower() == "true"
+USE_OSRM_ROUTING = os.getenv("RIDESMART_USE_OSRM", "false").lower() == "true"
+MAPBOX_BASE_URL = os.getenv("RIDESMART_MAPBOX_URL", "https://api.mapbox.com")
+MAPBOX_PROFILE = os.getenv("RIDESMART_MAPBOX_PROFILE", "mapbox/cycling")
+MAPBOX_ACCESS_TOKEN = (
+    os.getenv("RIDESMART_MAPBOX_ACCESS_TOKEN")
+    or os.getenv("MAPBOX_ACCESS_TOKEN")
+    or os.getenv("VITE_MAPBOX_ACCESS_TOKEN")
+    or ""
+)
+MAPBOX_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_MAPBOX_TIMEOUT", "8"))
+USE_MAPBOX_ROUTING = os.getenv("RIDESMART_USE_MAPBOX", "true").lower() == "true"
 ORS_BASE_URL = os.getenv("RIDESMART_ORS_URL", "https://api.openrouteservice.org")
 ORS_PROFILE = os.getenv("RIDESMART_ORS_PROFILE", "cycling-regular")
 ORS_API_KEY = os.getenv("RIDESMART_ORS_API_KEY", "")
@@ -118,10 +129,67 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
 
 
 def fetch_external_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    route_points = fetch_mapbox_route_points(request)
+    if route_points:
+        return route_points
+
     route_points = fetch_osrm_route_points(request)
     if route_points:
         return route_points
     return fetch_ors_route_points(request)
+
+
+def fetch_mapbox_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+    if not USE_MAPBOX_ROUTING:
+        logger.warning("routing.mapbox_disabled=true")
+        return []
+    if not MAPBOX_ACCESS_TOKEN:
+        logger.warning("routing.mapbox_missing_access_token=true")
+        return []
+
+    route_points = request_mapbox_route(request, MAPBOX_PROFILE)
+    if route_points:
+        logger.warning("routing.external_provider=mapbox profile=%s", MAPBOX_PROFILE)
+    return route_points
+
+
+def request_mapbox_route(
+    request: RoutingRequest, profile: str
+) -> list[tuple[float, float]]:
+    coordinates = (
+        f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
+    )
+    query = urlencode(
+        {
+            "access_token": MAPBOX_ACCESS_TOKEN,
+            "geometries": "geojson",
+            "overview": "full",
+            "steps": "false",
+        }
+    )
+    url = f"{MAPBOX_BASE_URL.rstrip('/')}/directions/v5/{profile}/{coordinates}?{query}"
+
+    try:
+        with urlopen(url, timeout=MAPBOX_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        logger.warning("routing.mapbox_http_error_code=%s", exc.code)
+        return []
+    except (URLError, TimeoutError, ValueError):
+        return []
+
+    routes = payload.get("routes", [])
+    if not routes:
+        return []
+
+    geometry = routes[0].get("geometry", {})
+    coordinates_data = geometry.get("coordinates", [])
+    route_points = [
+        (float(coordinate[1]), float(coordinate[0]))
+        for coordinate in coordinates_data
+        if len(coordinate) >= 2
+    ]
+    return compress_route_points(route_points)
 
 
 def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
