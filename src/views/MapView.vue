@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import MapboxMap from '../components/map/MapboxMap.vue'
 import RouteCard from '../components/RouteCard.vue'
 import ScorePanel from '../components/ScorePanel.vue'
-import { communityReports as demoCommunityReports } from '../data/mockData'
 import {
   defaultCoordinates,
   evaluateFeasibility,
@@ -44,7 +43,7 @@ const routeAlerts = ref([])
 const routeAlertsStatusMessage = ref('')
 const routeSegments = ref([])
 const heatmapRegions = ref([])
-const communityReports = ref(demoCommunityReports)
+const activeHeatmapRegion = ref(null)
 const isHeatmapLoading = ref(false)
 const heatmapError = ref('')
 const locationStatus = ref('Locating your current position...')
@@ -138,6 +137,10 @@ function insightImpactTone(impact) {
   return 'neutral'
 }
 
+function handleHeatmapRegionHover(region) {
+  activeHeatmapRegion.value = region
+}
+
 function formatBackendError(error, fallbackMessage) {
   const detail = String(error?.detail || error?.message || '').trim()
 
@@ -229,6 +232,7 @@ async function loadMelbourneSa2Heatmap() {
   try {
     const response = await getMelbourneSa2Heatmap()
     heatmapRegions.value = response.regions || []
+    activeHeatmapRegion.value = null
   } catch (error) {
     heatmapError.value = 'SA2 safety layer failed to load from the backend.'
   } finally {
@@ -397,6 +401,7 @@ onMounted(() => {
         :end-point="endCoordinate"
         :reports="[]"
         @location-found="handleLocationFound"
+        @heatmap-region-hover="handleHeatmapRegionHover"
       />
       <div v-else class="glass-panel locating-panel">
         <h2>Locating...</h2>
@@ -509,24 +514,51 @@ onMounted(() => {
       </form>
 
       <section v-if="showHeatmapPanel" class="glass-panel heatmap-panel">
-        <h2>Safety Layer</h2>
-        <p>{{ heatmapRegions.length }} SA2 regions loaded.</p>
-        <p v-if="heatmapError" class="status-text">{{ heatmapError }}</p>
-
-        <div class="heatmap-legend" aria-label="Heatmap legend">
-          <span><i class="legend-critical"></i> Critical</span>
-          <span><i class="legend-high"></i> High</span>
-          <span><i class="legend-medium"></i> Safe</span>
+        <div class="heatmap-panel-header">
+          <div>
+            <h2>Safety Layer</h2>
+            <p>{{ heatmapRegions.length }} SA2 regions loaded.</p>
+          </div>
+          <p v-if="heatmapError" class="status-text">{{ heatmapError }}</p>
         </div>
 
-        <div class="community-list">
-          <article v-for="report in communityReports" :key="report.id" class="community-card-minimal">
-            <div>
-              <h3>{{ report.type }}</h3>
-              <p>{{ report.area }}</p>
+        <article class="heatmap-region-card">
+          <span class="panel-kicker">Selected Region</span>
+
+          <template v-if="activeHeatmapRegion">
+            <div class="heatmap-region-summary">
+              <div>
+                <h3>{{ activeHeatmapRegion.name }}</h3>
+                <p>Move across the heatmap to compare neighbourhood risk signals.</p>
+              </div>
+              <span class="pill" :class="`pill-${riskTone(activeHeatmapRegion.riskLevel)}`">
+                {{ activeHeatmapRegion.riskLevel }}
+              </span>
             </div>
-            <span class="pill pill-red">{{ report.votes }} votes</span>
-          </article>
+
+            <div class="heatmap-region-metrics">
+              <div class="heatmap-metric">
+                <span class="metric-label">Score</span>
+                <strong>{{ activeHeatmapRegion.score ?? 'N/A' }}</strong>
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="heatmap-region-empty">
+            <h3>Move across the map</h3>
+            <p>Select an SA2 region on the heatmap to reveal its risk signal and supporting data.</p>
+          </div>
+        </article>
+
+        <div class="heatmap-panel-grid">
+          <div class="heatmap-support-card">
+            <span class="panel-kicker">Legend</span>
+            <div class="heatmap-legend" aria-label="Heatmap legend">
+              <span><i class="legend-critical"></i> Critical</span>
+              <span><i class="legend-high"></i> High</span>
+              <span><i class="legend-medium"></i> Safe</span>
+            </div>
+          </div>
         </div>
       </section>
 

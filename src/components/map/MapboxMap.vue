@@ -39,7 +39,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['location-found'])
+const emit = defineEmits(['location-found', 'heatmap-region-hover'])
 
 const mapContainer = ref(null)
 const map = ref(null)
@@ -340,6 +340,32 @@ function addMapLayers() {
     },
   })
 
+  map.value.on('mousemove', 'sa2-heatmap-fills', (event) => {
+    map.value.getCanvas().style.cursor = 'pointer'
+
+    const feature = event.features?.[0]
+    const properties = feature?.properties || {}
+    const scoreValue = Number(properties.score)
+    const intensityValue = Number(properties.intensity)
+    const shortCommuteValue = Number(properties.shortCommutePct)
+    const zeroCarValue = Number(properties.zeroCarHouseholdPct)
+    const workingPopulationValue = Number(properties.workingPopulationRatio)
+
+    emit('heatmap-region-hover', {
+      name: properties.suburbName || 'Selected region',
+      riskLevel: properties.riskLevel || 'Unknown',
+      score: Number.isFinite(scoreValue) ? Math.round(scoreValue) : null,
+      intensity: Number.isFinite(intensityValue) ? Math.round(intensityValue) : null,
+      shortCommutePct: Number.isFinite(shortCommuteValue) ? shortCommuteValue : null,
+      zeroCarHouseholdPct: Number.isFinite(zeroCarValue) ? zeroCarValue : null,
+      workingPopulationRatio: Number.isFinite(workingPopulationValue) ? workingPopulationValue : null,
+    })
+  })
+
+  map.value.on('mouseleave', 'sa2-heatmap-fills', () => {
+    map.value.getCanvas().style.cursor = ''
+  })
+
   map.value.addLayer({
     id: 'community-heatmap',
     type: 'heatmap',
@@ -491,7 +517,7 @@ watch(
   <section class="mapbox-shell">
     <div v-if="hasToken" ref="mapContainer" class="mapbox-container"></div>
 
-    <div v-else class="mapbox-token-empty panel">
+    <div v-if="!hasToken" class="mapbox-token-empty panel">
       <span class="eyebrow">Mapbox token required</span>
       <h2>Set your Mapbox access token</h2>
       <p>Add <code>VITE_MAPBOX_ACCESS_TOKEN</code> to your local <code>.env</code> file.</p>

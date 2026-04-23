@@ -551,6 +551,85 @@ label {
   gap: 1.2rem;
 }
 
+.heatmap-panel {
+  gap: 1rem;
+}
+
+.heatmap-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.heatmap-region-card,
+.heatmap-support-card {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.heatmap-region-summary {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.heatmap-region-summary h3,
+.heatmap-region-empty h3 {
+  color: var(--dark);
+  font-size: 1.15rem;
+  margin-bottom: 0.35rem;
+}
+
+.heatmap-region-summary p,
+.heatmap-region-empty p {
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.heatmap-region-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.heatmap-panel-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.heatmap-region-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1rem;
+}
+
+.heatmap-metric {
+  background: rgba(248, 250, 252, 0.92);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.85rem 0.9rem;
+}
+
+.metric-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.heatmap-metric strong {
+  color: var(--dark);
+  font-size: 1.1rem;
+}
+
 .floating-controls {
   background: var(--glass-bg);
   backdrop-filter: blur(10px);
@@ -672,6 +751,16 @@ label {
 .pill-red {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
+}
+
+.pill-yellow {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.pill-green {
+  background: rgba(0, 242, 152, 0.14);
+  color: #0f766e;
 }
 
 .heatmap-legend {
@@ -922,6 +1011,10 @@ code {
 
   .map-side-panel {
     max-height: 44vh;
+  }
+
+  .heatmap-region-metrics {
+    grid-template-columns: 1fr;
   }
 
   .floating-controls {
