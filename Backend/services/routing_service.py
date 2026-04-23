@@ -416,7 +416,7 @@ def detect_gap(
     gap_lane_geometries: list[list[tuple[float, float]]],
 ) -> bool:
     if not gap_lane_geometries:
-        return segment_index == 1
+        return False
 
     sampled_points = sample_segment_points(start, end)
     for gap_lane in gap_lane_geometries:
