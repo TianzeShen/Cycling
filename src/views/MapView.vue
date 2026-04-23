@@ -219,6 +219,7 @@ const isHeatmapMode = computed(
 const showRouteControls = computed(() => !isHeatmapMode.value)
 const showAnalysis = computed(() => mode.value === mapModes.routeAnalysis && result.value)
 const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
+const showSidePanel = computed(() => mode.value !== mapModes.heatmapMapOnly)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
 
 async function loadMelbourneSa2Heatmap() {
@@ -321,6 +322,15 @@ function showHeatmapMapOnlyMode() {
   mode.value = mapModes.heatmapMapOnly
 }
 
+async function toggleHeatmapPanelVisibility() {
+  if (mode.value === mapModes.heatmapPanel) {
+    showHeatmapMapOnlyMode()
+    return
+  }
+
+  await showHeatmapPanelMode()
+}
+
 async function resolveCurrentLocationLabel() {
   try {
     const place = await reverseMapboxPlace(startCoordinate.value)
@@ -414,12 +424,13 @@ onMounted(() => {
       <button type="button" :class="{ secondary: !isHeatmapMode }" @click="showHeatmapPanelMode">
         {{ isHeatmapLoading ? 'Loading...' : 'Heatmap' }}
       </button>
-      <button v-if="isHeatmapMode" type="button" class="secondary" @click="showHeatmapMapOnlyMode">
-        Map Only
+      <button v-if="isHeatmapMode" type="button" class="secondary" @click="toggleHeatmapPanelVisibility">
+        {{ showHeatmapPanel ? 'Hide Panel' : 'Show Panel' }}
       </button>
     </div>
 
-    <aside class="map-side-panel">
+    <transition name="panel-slide">
+      <aside v-if="showSidePanel" class="map-side-panel">
       <form v-if="showRouteControls" class="glass-panel compact-planner" @submit.prevent="evaluateJourney">
         <div class="planner-header">
           <h2>Trip Planner</h2>
@@ -600,6 +611,7 @@ onMounted(() => {
 
         </div>
       </transition>
-    </aside>
+      </aside>
+    </transition>
   </section>
 </template>

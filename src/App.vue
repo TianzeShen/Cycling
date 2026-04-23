@@ -12,6 +12,7 @@ const navItems = [
 const route = useRoute()
 const isHelpOpen = ref(false)
 const activeHelpStep = ref(0)
+const HELP_SEEN_STORAGE_KEY_PREFIX = 'ridesmart-help-shown'
 
 const helpContentByRoute = {
   home: {
@@ -120,12 +121,32 @@ function goToPreviousHelpStep() {
   activeHelpStep.value -= 1
 }
 
+function maybeOpenHelpForRoute(routeName) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (!routeName || !helpContentByRoute[routeName]) {
+    return
+  }
+
+  const storageKey = `${HELP_SEEN_STORAGE_KEY_PREFIX}-${routeName}`
+  const hasSeenHelp = window.localStorage.getItem(storageKey) === 'true'
+
+  if (!hasSeenHelp) {
+    window.localStorage.setItem(storageKey, 'true')
+    openHelpPanel()
+  }
+}
+
 watch(
   () => route.name,
-  () => {
+  (routeName) => {
     activeHelpStep.value = 0
     isHelpOpen.value = false
+    maybeOpenHelpForRoute(routeName)
   },
+  { immediate: true },
 )
 </script>
 

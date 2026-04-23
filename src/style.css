@@ -543,6 +543,17 @@ label {
   display: none;
 }
 
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+  transition: opacity 0.28s ease, transform 0.32s ease;
+}
+
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
 .journey-form,
 .heatmap-panel,
 .community-list {
