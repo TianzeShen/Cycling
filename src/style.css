@@ -573,6 +573,14 @@ label {
   gap: 0.45rem;
 }
 
+.panel-header-row,
+.planner-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .heatmap-region-card,
 .heatmap-support-card {
   background: rgba(255, 255, 255, 0.62);
@@ -1083,6 +1091,45 @@ code {
 .planner-header p {
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.side-panel-toggle {
+  align-items: center;
+  background: #ffffff;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: var(--glass-shadow);
+  color: var(--dark);
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  justify-content: center;
+  padding: 0.7rem 1.2rem;
+  white-space: nowrap;
+}
+
+.side-panel-toggle:hover {
+  background: #f8fafc;
+  box-shadow: var(--glass-shadow);
+  transform: none;
+}
+
+.side-panel-toggle-show {
+  left: 1.5rem;
+  position: absolute;
+  top: 1.5rem;
+  z-index: 12;
+}
+
+.side-panel-toggle-hide {
+  background: rgba(15, 23, 42, 0.06);
+  box-shadow: none;
+  padding: 0.55rem 1rem;
+}
+
+.side-panel-toggle-hide:hover {
+  background: rgba(15, 23, 42, 0.1);
+  box-shadow: none;
 }
 
 .route-inputs-group {

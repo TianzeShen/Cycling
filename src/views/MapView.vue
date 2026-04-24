@@ -212,7 +212,8 @@ const showAnalysis = computed(
   () => mode.value === mapModes.routeAnalysis && isAnalysisVisible.value,
 )
 const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
-const showSidePanel = computed(() => mode.value !== mapModes.heatmapMapOnly)
+const isSidePanelVisible = ref(true)
+const showSidePanel = computed(() => isSidePanelVisible.value)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
 
 async function loadMelbourneSa2Heatmap() {
@@ -299,6 +300,7 @@ async function evaluateJourney() {
 
 function showRouteMode() {
   mode.value = result.value ? mapModes.routeAnalysis : mapModes.routeInput
+  isSidePanelVisible.value = true
 }
 
 function hideAnalysis() {
@@ -307,20 +309,25 @@ function hideAnalysis() {
 
 async function showHeatmapPanelMode() {
   mode.value = mapModes.heatmapPanel
+  isSidePanelVisible.value = true
   await loadMelbourneSa2Heatmap()
 }
 
 function showHeatmapMapOnlyMode() {
   mode.value = mapModes.heatmapMapOnly
+  isSidePanelVisible.value = false
 }
 
-async function toggleHeatmapPanelVisibility() {
-  if (mode.value === mapModes.heatmapPanel) {
-    showHeatmapMapOnlyMode()
-    return
-  }
+function hideSidePanel() {
+  isSidePanelVisible.value = false
+}
 
-  await showHeatmapPanelMode()
+async function showSidePanelAgain() {
+  isSidePanelVisible.value = true
+
+  if (isHeatmapMode.value && !heatmapRegions.value.length) {
+    await loadMelbourneSa2Heatmap()
+  }
 }
 
 async function resolveCurrentLocationLabel() {
@@ -442,17 +449,28 @@ const warningCards = computed(() =>
       <button type="button" :class="{ secondary: !isHeatmapMode }" @click="showHeatmapPanelMode">
         {{ isHeatmapLoading ? 'Loading...' : 'Heatmap' }}
       </button>
-      <button v-if="isHeatmapMode" type="button" class="secondary" @click="toggleHeatmapPanelVisibility">
-        {{ showHeatmapPanel ? 'Hide Panel' : 'Show Panel' }}
-      </button>
     </div>
+
+    <button
+      v-if="!showSidePanel"
+      type="button"
+      class="side-panel-toggle side-panel-toggle-show"
+      @click="showSidePanelAgain"
+    >
+      Show Panel
+    </button>
 
     <transition name="panel-slide">
       <aside v-if="showSidePanel" class="map-side-panel">
-      <form v-if="showRouteControls" class="glass-panel compact-planner" @submit.prevent="evaluateJourney">
+        <form v-if="showRouteControls" class="glass-panel compact-planner" @submit.prevent="evaluateJourney">
         <div class="planner-header">
-          <h2>Trip Planner</h2>
-          <p>Find the safest path.</p>
+          <div>
+            <h2>Trip Planner</h2>
+            <p>Find the safest path.</p>
+          </div>
+          <button type="button" class="side-panel-toggle side-panel-toggle-hide" @click="hideSidePanel">
+            Hide
+          </button>
         </div>
 
         <div class="route-inputs-group">
@@ -544,9 +562,14 @@ const warningCards = computed(() =>
 
       <section v-if="showHeatmapPanel" class="glass-panel heatmap-panel">
         <div class="heatmap-panel-header">
-          <div>
-            <h2>Safety Layer</h2>
-            <p>{{ heatmapRegions.length }} SA2 regions loaded.</p>
+          <div class="panel-header-row">
+            <div>
+              <h2>Safety Layer</h2>
+              <p>{{ heatmapRegions.length }} SA2 regions loaded.</p>
+            </div>
+            <button type="button" class="side-panel-toggle side-panel-toggle-hide" @click="hideSidePanel">
+              Hide
+            </button>
           </div>
           <p v-if="heatmapError" class="status-text">{{ heatmapError }}</p>
         </div>
