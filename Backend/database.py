@@ -1,9 +1,27 @@
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Iterator
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
+
+
+def load_local_env_file() -> None:
+    env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.exists():
+        return
+
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+
+        key, value = stripped.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+load_local_env_file()
 
 
 DATABASE_URL = os.getenv(

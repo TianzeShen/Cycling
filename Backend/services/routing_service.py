@@ -299,7 +299,7 @@ def request_ors_route(
 
 
 def compress_route_points(
-    route_points: list[tuple[float, float]], max_points: int = 12
+    route_points: list[tuple[float, float]], max_points: int = 60
 ) -> list[tuple[float, float]]:
     if len(route_points) <= max_points:
         return route_points
