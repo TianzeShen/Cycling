@@ -204,6 +204,8 @@ function updateLayerVisibility() {
   const isHeatmap = props.mode === 'heatmap'
 
   setLayerVisibility('route-segment-lines', !isHeatmap)
+  setLayerVisibility('route-gap-lines', !isHeatmap)
+  setLayerVisibility('route-gap-lines-dash', !isHeatmap)
   setLayerVisibility('route-points', !isHeatmap)
   setLayerVisibility('route-alerts', !isHeatmap)
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
@@ -268,6 +270,40 @@ function addMapLayers() {
         '#12a594',
         '#12a594',
       ],
+    },
+  })
+
+  map.value.addLayer({
+    id: 'route-gap-lines',
+    type: 'line',
+    source: 'route-segments',
+    filter: ['==', ['get', 'isGap'], true],
+    paint: {
+      'line-width': 10,
+      'line-opacity': 0.98,
+      'line-color': '#ef4444',
+      'line-blur': 0.4,
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  })
+
+  map.value.addLayer({
+    id: 'route-gap-lines-dash',
+    type: 'line',
+    source: 'route-segments',
+    filter: ['==', ['get', 'isGap'], true],
+    paint: {
+      'line-width': 6,
+      'line-opacity': 1,
+      'line-color': '#fff5f5',
+      'line-dasharray': [1.2, 1.2],
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
     },
   })
 

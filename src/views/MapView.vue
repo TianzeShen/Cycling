@@ -38,7 +38,7 @@ const isLoading = ref(false)
 const isSearching = ref(false)
 const errorMessage = ref('')
 const result = ref(null)
-const routes = ref([])
+const isAnalysisVisible = ref(false)
 const routeAlerts = ref([])
 const routeAlertsStatusMessage = ref('')
 const routeSegments = ref([])
@@ -63,31 +63,20 @@ function riskTone(riskLevel) {
   return 'green'
 }
 
-function buildRouteCards(segments, alerts, alertsStatusMessage = '') {
-  if (!segments.length) {
-    return []
+function getSegmentMidpoint(segment) {
+  const coordinates = Array.isArray(segment?.coordinates) ? segment.coordinates : []
+
+  if (!coordinates.length) {
+    return null
   }
 
-  const gapCount = segments.filter((segment) => segment.is_gap).length
+  const midpoint = coordinates[Math.floor((coordinates.length - 1) / 2)]
 
-  return [
-    {
-      id: 'alerts',
-      name: 'Warnings',
-      time:
-        gapCount > 0
-          ? `${gapCount} gap${gapCount === 1 ? '' : 's'} detected`
-          : `${alerts.length} alert${alerts.length === 1 ? '' : 's'}`,
-      distance: 'Live route data',
-      risk: gapCount > 0 ? gapCount : alerts.length,
-      tone: gapCount > 0 || alerts.length ? 'yellow' : 'green',
-      summary: gapCount > 0
-        ? 'Infrastructure gaps detected along the recommended route.'
-        : alerts.length
-        ? alerts[0].message
-        : alertsStatusMessage || 'No route warning points were returned by the backend.',
-    },
-  ]
+  if (!Array.isArray(midpoint) || midpoint.length < 2) {
+    return null
+  }
+
+  return midpoint
 }
 
 function formatAlertLocation(location) {
@@ -100,20 +89,22 @@ function formatAlertLocation(location) {
 
 function normaliseRouteAlerts(routeResponse) {
   const alerts = routeResponse.alerts || []
-  const gapCount = (routeResponse.route_segments || []).filter((segment) => segment.is_gap).length
+  const gapSegments = (routeResponse.route_segments || []).filter((segment) => segment.is_gap)
+  const gapCount = gapSegments.length
 
   if (alerts.length) {
     return alerts
   }
 
   if (gapCount > 0) {
-    return [
-      {
-        level: 'Red',
-        location: null,
-        message: `${gapCount} infrastructure gap${gapCount > 1 ? 's' : ''} detected along the route.`,
-      },
-    ]
+    return gapSegments.map((segment, index) => ({
+      level: segment.risk_level || 'Red',
+      location: getSegmentMidpoint(segment),
+      message:
+        gapCount === 1
+          ? '1 infrastructure gap detected along the route.'
+          : `Infrastructure gap ${index + 1} of ${gapCount} detected along the route.`,
+    }))
   }
 
   return []
@@ -217,7 +208,9 @@ const isHeatmapMode = computed(
 )
 
 const showRouteControls = computed(() => !isHeatmapMode.value)
-const showAnalysis = computed(() => mode.value === mapModes.routeAnalysis && result.value)
+const showAnalysis = computed(
+  () => mode.value === mapModes.routeAnalysis && isAnalysisVisible.value,
+)
 const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
 const showSidePanel = computed(() => mode.value !== mapModes.heatmapMapOnly)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
@@ -279,13 +272,7 @@ async function evaluateJourney() {
       routeAlerts.value = normaliseRouteAlerts(routeResult.value)
       routeAlertsStatusMessage.value = routeResult.value.alerts_status_message || ''
       routeSegments.value = routeResult.value.route_segments || []
-      routes.value = buildRouteCards(
-        routeSegments.value,
-        routeAlerts.value,
-        routeAlertsStatusMessage.value,
-      )
     } else {
-      routes.value = []
       routeAlerts.value = []
       routeAlertsStatusMessage.value = ''
       routeSegments.value = []
@@ -304,6 +291,7 @@ async function evaluateJourney() {
       errorMessage.value = [feasibilityError, routeError].filter(Boolean).join(' ')
     }
   } finally {
+    isAnalysisVisible.value = Boolean(result.value || routeSegments.value.length)
     mode.value = result.value ? mapModes.routeAnalysis : mapModes.routeInput
     isLoading.value = false
   }
@@ -311,6 +299,10 @@ async function evaluateJourney() {
 
 function showRouteMode() {
   mode.value = result.value ? mapModes.routeAnalysis : mapModes.routeInput
+}
+
+function hideAnalysis() {
+  isAnalysisVisible.value = false
 }
 
 async function showHeatmapPanelMode() {
@@ -396,6 +388,32 @@ function locateUserOnLoad() {
 onMounted(() => {
   locateUserOnLoad()
 })
+
+const displayedGapCount = computed(() => routeSegments.value.filter((segment) => segment.is_gap).length)
+
+const warningCards = computed(() =>
+  routeSegments.value.length
+    ? [
+          {
+            id: 'alerts',
+            name: 'Warnings',
+            time:
+              displayedGapCount.value > 0
+              ? `${displayedGapCount.value} gap${displayedGapCount.value === 1 ? '' : 's'} detected`
+              : `${routeAlerts.value.length} alert${routeAlerts.value.length === 1 ? '' : 's'}`,
+          distance: 'Live route data',
+          risk: displayedGapCount.value > 0 ? displayedGapCount.value : routeAlerts.value.length,
+          tone: displayedGapCount.value > 0 || routeAlerts.value.length ? 'yellow' : 'green',
+          summary:
+            displayedGapCount.value > 0
+              ? 'Infrastructure gaps detected along the recommended route.'
+              : routeAlerts.value.length
+              ? routeAlerts.value[0].message
+              : routeAlertsStatusMessage.value || 'No route warning points were returned by the backend.',
+        },
+      ]
+    : [],
+)
 </script>
 
 <template>
@@ -575,7 +593,7 @@ onMounted(() => {
 
       <transition name="slide-up">
         <div v-if="showAnalysis" class="analysis-stack">
-          <ScorePanel :result="result" @close="result = null" />
+          <ScorePanel v-if="result" :result="result" @close="hideAnalysis" />
 
           <div v-if="result.explanations?.length" class="glass-panel compact-overview">
             <div class="overview-header">
@@ -605,7 +623,7 @@ onMounted(() => {
               <h3>Warnings</h3>
             </div>
             <div class="route-cards-vertical">
-              <RouteCard v-for="route in routes" :key="route.id" :route="route" />
+              <RouteCard v-for="route in warningCards" :key="route.id" :route="route" />
             </div>
           </div>
 
