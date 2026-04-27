@@ -449,7 +449,7 @@ def fetch_gap_lane_geometries_near_route(
             ST_AsGeoJSON(cl.geom) AS geom_json
         FROM ridesmart.cycling_lane cl, route_line r
         WHERE COALESCE(cl.is_continuous, false) = false
-          AND ST_DWithin(cl.geom::geography, r.geom::geography, 40)
+          AND ST_DWithin(cl.geom::geography, r.geom::geography, 80)
     """
 
     try:
@@ -489,7 +489,7 @@ def detect_gap(
     sampled_points = sample_segment_points(start, end)
     for gap_lane in gap_lane_geometries:
         for segment_point in sampled_points:
-            if polyline_is_near_point(gap_lane, segment_point, threshold_m=45):
+            if polyline_is_near_point(gap_lane, segment_point, threshold_m=35):
                 return True
     return False
 
@@ -497,13 +497,14 @@ def detect_gap(
 def sample_segment_points(
     start: tuple[float, float], end: tuple[float, float]
 ) -> list[tuple[float, float]]:
+    segment_length_m = max(1.0, distance_m(start, end))
+    sample_count = max(3, min(25, int(segment_length_m // 20) + 2))
     return [
-        start,
         (
-            start[0] + (end[0] - start[0]) * 0.5,
-            start[1] + (end[1] - start[1]) * 0.5,
-        ),
-        end,
+            start[0] + (end[0] - start[0]) * (index / (sample_count - 1)),
+            start[1] + (end[1] - start[1]) * (index / (sample_count - 1)),
+        )
+        for index in range(sample_count)
     ]
 
 
@@ -512,6 +513,9 @@ def polyline_is_near_point(
     point: tuple[float, float],
     threshold_m: float,
 ) -> bool:
+    if not polyline:
+        return False
+
     for polyline_point in polyline:
         if distance_m(point, polyline_point) <= threshold_m:
             return True
