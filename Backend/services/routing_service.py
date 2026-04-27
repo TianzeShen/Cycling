@@ -318,7 +318,7 @@ def request_ors_route(
 
 
 def compress_route_points(
-    route_points: list[tuple[float, float]], max_points: int = 60
+    route_points: list[tuple[float, float]], max_points: int = 30
 ) -> list[tuple[float, float]]:
     if len(route_points) <= max_points:
         return route_points
@@ -475,7 +475,7 @@ def fetch_lane_type_geometries_near_route(
             ST_AsGeoJSON(cl.geom) AS geom_json
         FROM ridesmart.cycling_lane cl, route_line r
         WHERE cl.lane_type IN ('protected', 'shared_path', 'informal')
-          AND ST_DWithin(cl.geom::geography, r.geom::geography, 120)
+          AND ST_DWithin(cl.geom::geography, r.geom::geography, 20)
     """
 
     try:
