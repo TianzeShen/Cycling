@@ -560,56 +560,10 @@ def polyline_is_near_point(
     if not polyline:
         return False
 
-    if len(polyline) == 1:
-        return distance_m(point, polyline[0]) <= threshold_m
-
-    for index in range(len(polyline) - 1):
-        if point_to_polyline_segment_distance_m(
-            point,
-            polyline[index],
-            polyline[index + 1],
-        ) <= threshold_m:
+    for polyline_point in polyline:
+        if distance_m(point, polyline_point) <= threshold_m:
             return True
     return False
-
-
-def point_to_polyline_segment_distance_m(
-    point: tuple[float, float],
-    segment_start: tuple[float, float],
-    segment_end: tuple[float, float],
-) -> float:
-    # Convert nearby lat/lng coordinates into a local meter grid for a cheap line-distance check.
-    reference_lat = (point[0] + segment_start[0] + segment_end[0]) / 3
-    point_x, point_y = lat_lng_to_local_xy(point, reference_lat)
-    start_x, start_y = lat_lng_to_local_xy(segment_start, reference_lat)
-    end_x, end_y = lat_lng_to_local_xy(segment_end, reference_lat)
-
-    delta_x = end_x - start_x
-    delta_y = end_y - start_y
-    segment_length_squared = delta_x**2 + delta_y**2
-
-    if segment_length_squared == 0:
-        return ((point_x - start_x) ** 2 + (point_y - start_y) ** 2) ** 0.5
-
-    projection_ratio = (
-        ((point_x - start_x) * delta_x) + ((point_y - start_y) * delta_y)
-    ) / segment_length_squared
-    projection_ratio = max(0.0, min(1.0, projection_ratio))
-
-    projected_x = start_x + projection_ratio * delta_x
-    projected_y = start_y + projection_ratio * delta_y
-    return ((point_x - projected_x) ** 2 + (point_y - projected_y) ** 2) ** 0.5
-
-
-def lat_lng_to_local_xy(
-    point: tuple[float, float],
-    reference_lat: float,
-) -> tuple[float, float]:
-    lat_scale = 111_320.0
-    lng_scale = 111_320.0 * max(0.1, abs(cos(radians(reference_lat))))
-    x = point[1] * lng_scale
-    y = point[0] * lat_scale
-    return x, y
 
 
 def distance_m(
