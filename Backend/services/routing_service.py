@@ -48,6 +48,7 @@ ORS_API_KEY = os.getenv("RIDESMART_ORS_API_KEY", "")
 ORS_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_ORS_TIMEOUT", "12"))
 USE_ORS_ROUTING = os.getenv("RIDESMART_USE_ORS", "false").lower() == "true"
 logger = logging.getLogger("uvicorn.error")
+ROUTING_DEBUG_SIGNATURE = "routing-signature-2026-04-28-v1"
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
@@ -125,7 +126,25 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         alerts_status_message=alerts_status_message,
         heatmap_zones=heatmap_zones,
         heatmap_status_message=heatmap_status_message,
+        debug_signature=ROUTING_DEBUG_SIGNATURE,
     )
+
+
+def calculate_gap_segment_count_for_request(request: RoutingRequest) -> int:
+    segments = build_route_segments_for_request(request)
+    return sum(1 for segment in segments if segment.is_gap)
+
+
+def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegment]:
+    route_points = fetch_external_route_points(request)
+    if route_points:
+        return build_route_segments(route_points)
+
+    segments = fetch_route_segments_from_db(request)
+    if segments:
+        return segments
+
+    return build_route_segments(interpolate_route_points(request))
 
 
 def fetch_external_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
@@ -351,8 +370,14 @@ def fetch_route_segments_from_db(request: RoutingRequest) -> list[RouteSegment]:
             EXISTS (
                 SELECT 1
                 FROM ridesmart.cycling_lane cl
-                WHERE ST_DWithin(cl.geom::geography, rs.geom::geography, 40)
-                  AND COALESCE(cl.is_continuous, false) = false
+                WHERE ST_DWithin(cl.geom::geography, rs.geom::geography, 50)
+                  AND cl.lane_type = 'protected'
+            )
+            AND EXISTS (
+                SELECT 1
+                FROM ridesmart.cycling_lane cl
+                WHERE ST_DWithin(cl.geom::geography, rs.geom::geography, 50)
+                  AND cl.lane_type = 'informal'
             ) AS has_gap
         FROM ridesmart.road_segment rs, route_line r
         WHERE ST_DWithin(rs.geom::geography, r.geom::geography, 150)
@@ -409,12 +434,12 @@ def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float
 
 
 def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteSegment]:
-    gap_lane_geometries = fetch_gap_lane_geometries_near_route(route_points)
+    lane_type_geometries = fetch_lane_type_geometries_near_route(route_points)
     segments: list[RouteSegment] = []
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        is_gap = detect_gap(index, start, end, gap_lane_geometries)
+        is_gap = detect_gap(index, start, end, lane_type_geometries)
         segments.append(
             RouteSegment(
                 coordinates=[
@@ -428,11 +453,11 @@ def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteS
     return segments
 
 
-def fetch_gap_lane_geometries_near_route(
+def fetch_lane_type_geometries_near_route(
     route_points: list[tuple[float, float]]
-) -> list[list[tuple[float, float]]]:
+) -> dict[str, list[list[tuple[float, float]]]]:
     if not has_cycling_lane_data() or len(route_points) < 2:
-        return []
+        return {"high_quality": [], "informal": []}
 
     route_coordinates = ",".join(
         f"{lng} {lat}" for lat, lng in route_points
@@ -446,19 +471,27 @@ def fetch_gap_lane_geometries_near_route(
             ) AS geom
         )
         SELECT
+            cl.lane_type::text AS lane_type,
             ST_AsGeoJSON(cl.geom) AS geom_json
         FROM ridesmart.cycling_lane cl, route_line r
-        WHERE COALESCE(cl.is_continuous, false) = false
-          AND ST_DWithin(cl.geom::geography, r.geom::geography, 80)
+        WHERE cl.lane_type IN ('protected', 'shared_path', 'informal')
+          AND ST_DWithin(cl.geom::geography, r.geom::geography, 120)
     """
 
     try:
         rows = fetch_all(query, {"route_wkt": f"LINESTRING({route_coordinates})"})
     except Exception:
-        return []
+        return {"high_quality": [], "informal": []}
 
-    lane_geometries: list[list[tuple[float, float]]] = []
+    lane_geometries = {"high_quality": [], "informal": []}
     for row in rows:
+        lane_type = str(row.get("lane_type", "")).strip().lower()
+        if lane_type in {"protected", "shared_path"}:
+            target_group = "high_quality"
+        elif lane_type == "informal":
+            target_group = "informal"
+        else:
+            continue
         geom_json = row.get("geom_json")
         if not geom_json:
             continue
@@ -473,7 +506,7 @@ def fetch_gap_lane_geometries_near_route(
             if len(point) >= 2
         ]
         if lane_points:
-            lane_geometries.append(lane_points)
+            lane_geometries[target_group].append(lane_points)
     return lane_geometries
 
 
@@ -481,16 +514,27 @@ def detect_gap(
     segment_index: int,
     start: tuple[float, float],
     end: tuple[float, float],
-    gap_lane_geometries: list[list[tuple[float, float]]],
+    lane_type_geometries: dict[str, list[list[tuple[float, float]]]],
 ) -> bool:
-    if not gap_lane_geometries:
+    protected_lanes = lane_type_geometries.get("high_quality", [])
+    informal_lanes = lane_type_geometries.get("informal", [])
+    if not protected_lanes or not informal_lanes:
         return False
 
     sampled_points = sample_segment_points(start, end)
-    for gap_lane in gap_lane_geometries:
-        for segment_point in sampled_points:
-            if polyline_is_near_point(gap_lane, segment_point, threshold_m=35):
-                return True
+    for segment_point in sampled_points:
+        near_protected = any(
+            polyline_is_near_point(lane_geometry, segment_point, threshold_m=35)
+            for lane_geometry in protected_lanes
+        )
+        if not near_protected:
+            continue
+
+        if any(
+            polyline_is_near_point(lane_geometry, segment_point, threshold_m=35)
+            for lane_geometry in informal_lanes
+        ):
+            return True
     return False
 
 
@@ -516,10 +560,56 @@ def polyline_is_near_point(
     if not polyline:
         return False
 
-    for polyline_point in polyline:
-        if distance_m(point, polyline_point) <= threshold_m:
+    if len(polyline) == 1:
+        return distance_m(point, polyline[0]) <= threshold_m
+
+    for index in range(len(polyline) - 1):
+        if point_to_polyline_segment_distance_m(
+            point,
+            polyline[index],
+            polyline[index + 1],
+        ) <= threshold_m:
             return True
     return False
+
+
+def point_to_polyline_segment_distance_m(
+    point: tuple[float, float],
+    segment_start: tuple[float, float],
+    segment_end: tuple[float, float],
+) -> float:
+    # Convert nearby lat/lng coordinates into a local meter grid for a cheap line-distance check.
+    reference_lat = (point[0] + segment_start[0] + segment_end[0]) / 3
+    point_x, point_y = lat_lng_to_local_xy(point, reference_lat)
+    start_x, start_y = lat_lng_to_local_xy(segment_start, reference_lat)
+    end_x, end_y = lat_lng_to_local_xy(segment_end, reference_lat)
+
+    delta_x = end_x - start_x
+    delta_y = end_y - start_y
+    segment_length_squared = delta_x**2 + delta_y**2
+
+    if segment_length_squared == 0:
+        return ((point_x - start_x) ** 2 + (point_y - start_y) ** 2) ** 0.5
+
+    projection_ratio = (
+        ((point_x - start_x) * delta_x) + ((point_y - start_y) * delta_y)
+    ) / segment_length_squared
+    projection_ratio = max(0.0, min(1.0, projection_ratio))
+
+    projected_x = start_x + projection_ratio * delta_x
+    projected_y = start_y + projection_ratio * delta_y
+    return ((point_x - projected_x) ** 2 + (point_y - projected_y) ** 2) ** 0.5
+
+
+def lat_lng_to_local_xy(
+    point: tuple[float, float],
+    reference_lat: float,
+) -> tuple[float, float]:
+    lat_scale = 111_320.0
+    lng_scale = 111_320.0 * max(0.1, abs(cos(radians(reference_lat))))
+    x = point[1] * lng_scale
+    y = point[0] * lat_scale
+    return x, y
 
 
 def distance_m(

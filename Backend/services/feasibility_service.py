@@ -3,7 +3,13 @@ from typing import Any, TypedDict
 
 try:
     from Backend.database import fetch_one, fetch_scalar
-    from Backend.schemas import FeasibilityExplanation, FeasibilityRequest, FeasibilityResponse
+    from Backend.schemas import (
+        FeasibilityExplanation,
+        FeasibilityRequest,
+        FeasibilityResponse,
+        RoutingRequest,
+    )
+    from Backend.services.routing_service import calculate_gap_segment_count_for_request
     from Backend.services.ridesmart_ai_adapter import (
         compute_feasibility_score,
         detect_route_risk,
@@ -11,7 +17,13 @@ try:
     )
 except ModuleNotFoundError:
     from database import fetch_one, fetch_scalar
-    from schemas import FeasibilityExplanation, FeasibilityRequest, FeasibilityResponse
+    from schemas import (
+        FeasibilityExplanation,
+        FeasibilityRequest,
+        FeasibilityResponse,
+        RoutingRequest,
+    )
+    from services.routing_service import calculate_gap_segment_count_for_request
     from services.ridesmart_ai_adapter import (
         compute_feasibility_score,
         detect_route_risk,
@@ -78,7 +90,13 @@ def evaluate_feasibility(request: FeasibilityRequest) -> FeasibilityResponse:
         request.end_lng,
     )
     route_context = fetch_route_context(request)
-    features = build_feasibility_features(request, distance_km, route_context)
+    routing_gap_count = fetch_routing_gap_count(request)
+    features = build_feasibility_features(
+        request,
+        distance_km,
+        route_context,
+        routing_gap_count,
+    )
 
     score_result = compute_feasibility_score(features)
     risk_result = detect_route_risk(features)
@@ -250,15 +268,17 @@ def build_feasibility_features(
     request: FeasibilityRequest,
     distance_km: float,
     route_context: RouteContext | None,
+    routing_gap_count: int | None,
 ) -> FeasibilityFeatures:
     if has_route_context_data(route_context) and route_context is not None:
-        return build_features_from_context(distance_km, route_context)
-    return build_estimated_features(request, distance_km)
+        return build_features_from_context(distance_km, route_context, routing_gap_count)
+    return build_estimated_features(request, distance_km, routing_gap_count)
 
 
 def build_features_from_context(
     distance_km: float,
     route_context: RouteContext,
+    routing_gap_count: int | None,
 ) -> FeasibilityFeatures:
     road_count = max(route_context["road_count"], 1)
     lane_count = route_context["lane_count"]
@@ -272,7 +292,11 @@ def build_features_from_context(
         "distance_km": round(distance_km, 2),
         "protected_lane_pct": protected_lane_pct,
         "no_infra_pct": no_infra_pct,
-        "gap_count": int(route_context["gap_count"]),
+        "gap_count": (
+            int(routing_gap_count)
+            if routing_gap_count is not None
+            else int(route_context["gap_count"])
+        ),
         "high_traffic_pct": high_traffic_pct,
         "avg_speed_limit": round(float(route_context["avg_speed_limit_kmh"]), 2),
     }
@@ -281,6 +305,7 @@ def build_features_from_context(
 def build_estimated_features(
     request: FeasibilityRequest,
     distance_km: float,
+    routing_gap_count: int | None,
 ) -> FeasibilityFeatures:
     midpoint_lat = (request.start_lat + request.end_lat) / 2
     midpoint_lng = (request.start_lng + request.end_lng) / 2
@@ -309,11 +334,12 @@ def build_estimated_features(
         high_traffic_pct = 40.0
         avg_speed_limit = 60.0
 
-    gap_count = 0
-    if distance_km > 8:
-        gap_count = 1
-    if distance_km > 15:
-        gap_count = 2
+    gap_count = routing_gap_count if routing_gap_count is not None else 0
+    if routing_gap_count is None:
+        if distance_km > 8:
+            gap_count = 1
+        if distance_km > 15:
+            gap_count = 2
 
     return {
         "distance_km": round(distance_km, 2),
@@ -323,6 +349,14 @@ def build_estimated_features(
         "high_traffic_pct": high_traffic_pct,
         "avg_speed_limit": avg_speed_limit,
     }
+
+
+def fetch_routing_gap_count(request: FeasibilityRequest) -> int | None:
+    try:
+        routing_request = RoutingRequest(**request.model_dump())
+        return calculate_gap_segment_count_for_request(routing_request)
+    except Exception:
+        return None
 
 
 def percentage(part: int, whole: int) -> float:

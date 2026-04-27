@@ -89,6 +89,7 @@ class RoutingResponse(BaseModel):
     alerts_status_message: str | None = None
     heatmap_zones: list[HeatmapZone] = Field(default_factory=list)
     heatmap_status_message: str | None = None
+    debug_signature: str | None = None
 
 
 class MelbourneHeatmapRegion(BaseModel):
