@@ -9,6 +9,14 @@ const props = defineProps({
     type: String,
     default: 'route',
   },
+  routeGeometry: {
+    type: Object,
+    default: null,
+  },
+  gapSegments: {
+    type: Array,
+    default: () => [],
+  },
   routeSegments: {
     type: Array,
     default: () => [],
@@ -61,10 +69,36 @@ function emptyCollection() {
   }
 }
 
-function getRouteCollection() {
+function getMainRouteCollection() {
+  if (props.routeGeometry?.type === 'LineString' && Array.isArray(props.routeGeometry.coordinates)) {
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: props.routeGeometry,
+        },
+      ],
+    }
+  }
+
   return {
     type: 'FeatureCollection',
     features: props.routeSegments.map(segmentToGeoJson),
+  }
+}
+
+function getGapRouteCollection() {
+  const segments = props.gapSegments.length
+    ? props.gapSegments
+    : props.routeGeometry
+      ? []
+      : props.routeSegments.filter((segment) => segment.is_gap || segment.isGap)
+
+  return {
+    type: 'FeatureCollection',
+    features: segments.map(segmentToGeoJson),
   }
 }
 
@@ -140,7 +174,8 @@ function updateRouteData() {
     return
   }
 
-  setSourceData('route-segments', getRouteCollection())
+  setSourceData('route-main', getMainRouteCollection())
+  setSourceData('route-gaps', getGapRouteCollection())
 }
 
 function updateMarkers() {
@@ -178,7 +213,12 @@ function updateAlertData() {
 }
 
 function flyToDestination() {
-  if (!mapReady.value || !props.endPoint || !props.routeSegments.length || props.mode !== 'route') {
+  if (
+    !mapReady.value ||
+    !props.endPoint ||
+    (!props.routeGeometry && !props.gapSegments.length && !props.routeSegments.length) ||
+    props.mode !== 'route'
+  ) {
     return
   }
 
@@ -223,9 +263,15 @@ function updateLayers() {
 }
 
 function addMapSources() {
-  map.value.addSource('route-segments', {
+  map.value.addSource('route-main', {
     type: 'geojson',
-    data: getRouteCollection(),
+    data: getMainRouteCollection(),
+    tolerance: 0.8,
+  })
+
+  map.value.addSource('route-gaps', {
+    type: 'geojson',
+    data: getGapRouteCollection(),
     tolerance: 0.8,
   })
 
@@ -255,29 +301,22 @@ function addMapLayers() {
   map.value.addLayer({
     id: 'route-segment-lines',
     type: 'line',
-    source: 'route-segments',
+    source: 'route-main',
     paint: {
       'line-width': 7,
       'line-opacity': 0.92,
-      'line-color': [
-        'match',
-        ['get', 'riskLevel'],
-        'Red',
-        '#e85d5d',
-        'Yellow',
-        '#ffd166',
-        'Green',
-        '#12a594',
-        '#12a594',
-      ],
+      'line-color': '#12a594',
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
     },
   })
 
   map.value.addLayer({
     id: 'route-gap-lines',
     type: 'line',
-    source: 'route-segments',
-    filter: ['==', ['get', 'isGap'], true],
+    source: 'route-gaps',
     paint: {
       'line-width': 10,
       'line-opacity': 0.98,
@@ -293,8 +332,7 @@ function addMapLayers() {
   map.value.addLayer({
     id: 'route-gap-lines-dash',
     type: 'line',
-    source: 'route-segments',
-    filter: ['==', ['get', 'isGap'], true],
+    source: 'route-gaps',
     paint: {
       'line-width': 6,
       'line-opacity': 1,
@@ -521,6 +559,21 @@ watch(
     updateRouteData()
     flyToDestination()
   },
+  { deep: true },
+)
+
+watch(
+  () => props.routeGeometry,
+  () => {
+    updateRouteData()
+    flyToDestination()
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.gapSegments,
+  updateRouteData,
   { deep: true },
 )
 

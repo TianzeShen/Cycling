@@ -41,6 +41,10 @@ const result = ref(null)
 const isAnalysisVisible = ref(false)
 const routeAlerts = ref([])
 const routeAlertsStatusMessage = ref('')
+const routeOptions = ref([])
+const activeRouteIndex = ref(0)
+const routeGeometry = ref(null)
+const gapSegments = ref([])
 const routeSegments = ref([])
 const heatmapRegions = ref([])
 const activeHeatmapRegion = ref(null)
@@ -89,15 +93,17 @@ function formatAlertLocation(location) {
 
 function normaliseRouteAlerts(routeResponse) {
   const alerts = routeResponse.alerts || []
-  const gapSegments = (routeResponse.route_segments || []).filter((segment) => segment.is_gap)
-  const gapCount = gapSegments.length
+  const routeGapSegments = Array.isArray(routeResponse.gap_segments) ? routeResponse.gap_segments : []
+  const legacyGapSegments = (routeResponse.route_segments || []).filter((segment) => segment.is_gap)
+  const alertGapSegments = routeResponse.route_geometry || routeGapSegments.length ? routeGapSegments : legacyGapSegments
+  const gapCount = alertGapSegments.length
 
   if (alerts.length) {
     return alerts
   }
 
   if (gapCount > 0) {
-    return gapSegments.map((segment, index) => ({
+    return alertGapSegments.map((segment, index) => ({
       level: segment.risk_level || 'Red',
       location: getSegmentMidpoint(segment),
       message:
@@ -108,6 +114,144 @@ function normaliseRouteAlerts(routeResponse) {
   }
 
   return []
+}
+
+function toFiniteNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const number = Number(value)
+
+  return Number.isFinite(number) ? number : null
+}
+
+function readFirstNumber(source, keys) {
+  if (!source) {
+    return null
+  }
+
+  for (const key of keys) {
+    const value = toFiniteNumber(source[key])
+
+    if (value !== null) {
+      return value
+    }
+  }
+
+  return null
+}
+
+function sumSegmentMetric(segments, keys, divisor = 1) {
+  const values = (Array.isArray(segments) ? segments : [])
+    .map((segment) => readFirstNumber(segment, keys))
+    .filter((value) => value !== null)
+
+  if (!values.length) {
+    return null
+  }
+
+  return values.reduce((total, value) => total + value, 0) / divisor
+}
+
+function resolveDistanceKm(route, fallback = null) {
+  return (
+    readFirstNumber(route, ['distance_km', 'distanceKm', 'distance']) ??
+    readFirstNumber(fallback, ['distance_km', 'distanceKm', 'distance']) ??
+    sumSegmentMetric(route?.route_segments, ['distance_km', 'distanceKm', 'distance']) ??
+    sumSegmentMetric(route?.route_segments, ['distance_m', 'distanceMeters'], 1000)
+  )
+}
+
+function resolveDurationMin(route, fallback = null) {
+  return (
+    readFirstNumber(route, ['duration_min', 'durationMin', 'duration']) ??
+    readFirstNumber(fallback, ['duration_min', 'durationMin', 'duration']) ??
+    sumSegmentMetric(route?.route_segments, ['duration_min', 'durationMin', 'duration']) ??
+    sumSegmentMetric(route?.route_segments, ['duration_s', 'durationSeconds'], 60)
+  )
+}
+
+function normaliseRouteOptions(routeResponse) {
+  const options = Array.isArray(routeResponse?.route_options) ? routeResponse.route_options : []
+
+  if (options.length) {
+    return options.map((option, index) => {
+      const route = {
+        ...option,
+        id: `${option.provider || 'route'}-${option.label || index}-${index}`,
+        label: option.label || (index === 0 ? 'Recommended' : `Alternative ${index}`),
+        route_geometry: option.route_geometry || routeResponse.route_geometry || null,
+        gap_segments: Array.isArray(option.gap_segments) ? option.gap_segments : [],
+        route_segments: Array.isArray(option.route_segments) ? option.route_segments : [],
+      }
+
+      return {
+        ...route,
+        distance_km: resolveDistanceKm(route, routeResponse),
+        duration_min: resolveDurationMin(route, routeResponse),
+      }
+    })
+  }
+
+  if (
+    routeResponse?.route_geometry ||
+    (Array.isArray(routeResponse?.gap_segments) && routeResponse.gap_segments.length) ||
+    (Array.isArray(routeResponse?.route_segments) && routeResponse.route_segments.length)
+  ) {
+    const route = {
+      id: 'recommended-legacy',
+      label: 'Recommended',
+      provider: routeResponse.provider || 'mapbox',
+      route_geometry: routeResponse.route_geometry || null,
+      gap_segments: Array.isArray(routeResponse.gap_segments) ? routeResponse.gap_segments : [],
+      route_segments: Array.isArray(routeResponse.route_segments) ? routeResponse.route_segments : [],
+      alerts: routeResponse.alerts || [],
+    }
+
+    return [
+      {
+        ...route,
+        distance_km: resolveDistanceKm(route, routeResponse),
+        duration_min: resolveDurationMin(route, routeResponse),
+      },
+    ]
+  }
+
+  return []
+}
+
+function formatDistance(distanceKm) {
+  const value = Number(distanceKm)
+
+  if (!Number.isFinite(value)) {
+    return 'Distance pending'
+  }
+
+  return `${value.toFixed(value >= 10 ? 1 : 2)} km`
+}
+
+function formatDuration(durationMin) {
+  const value = Number(durationMin)
+
+  if (!Number.isFinite(value)) {
+    return 'Time pending'
+  }
+
+  return `${Math.round(value)} min`
+}
+
+function setActiveRoute(index) {
+  if (!routeOptions.value[index]) {
+    return
+  }
+
+  activeRouteIndex.value = index
+  const route = routeOptions.value[index]
+  routeGeometry.value = route.route_geometry || null
+  gapSegments.value = route.gap_segments || []
+  routeSegments.value = route.route_segments || []
+  routeAlerts.value = normaliseRouteAlerts(route)
 }
 
 function insightImpactTone(impact) {
@@ -270,12 +414,25 @@ async function evaluateJourney() {
     }
 
     if (routeResult.status === 'fulfilled') {
-      routeAlerts.value = normaliseRouteAlerts(routeResult.value)
+      routeOptions.value = normaliseRouteOptions(routeResult.value)
+      activeRouteIndex.value = 0
       routeAlertsStatusMessage.value = routeResult.value.alerts_status_message || ''
-      routeSegments.value = routeResult.value.route_segments || []
+
+      if (routeOptions.value.length) {
+        setActiveRoute(0)
+      } else {
+        routeAlerts.value = []
+        routeGeometry.value = null
+        gapSegments.value = []
+        routeSegments.value = []
+      }
     } else {
+      routeOptions.value = []
+      activeRouteIndex.value = 0
       routeAlerts.value = []
       routeAlertsStatusMessage.value = ''
+      routeGeometry.value = null
+      gapSegments.value = []
       routeSegments.value = []
     }
 
@@ -292,14 +449,22 @@ async function evaluateJourney() {
       errorMessage.value = [feasibilityError, routeError].filter(Boolean).join(' ')
     }
   } finally {
-    isAnalysisVisible.value = Boolean(result.value || routeSegments.value.length)
-    mode.value = result.value ? mapModes.routeAnalysis : mapModes.routeInput
+    isAnalysisVisible.value = Boolean(
+      result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length,
+    )
+    mode.value =
+      result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length
+        ? mapModes.routeAnalysis
+        : mapModes.routeInput
     isLoading.value = false
   }
 }
 
 function showRouteMode() {
-  mode.value = result.value ? mapModes.routeAnalysis : mapModes.routeInput
+  mode.value =
+    result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length
+      ? mapModes.routeAnalysis
+      : mapModes.routeInput
   isSidePanelVisible.value = true
 }
 
@@ -396,10 +561,31 @@ onMounted(() => {
   locateUserOnLoad()
 })
 
-const displayedGapCount = computed(() => routeSegments.value.filter((segment) => segment.is_gap).length)
+const displayedGapCount = computed(() =>
+  gapSegments.value.length || (routeGeometry.value ? 0 : routeSegments.value.filter((segment) => segment.is_gap).length),
+)
+
+const selectedRoute = computed(() => routeOptions.value[activeRouteIndex.value] || null)
+
+const routeOptionCards = computed(() =>
+  routeOptions.value.map((route, index) => {
+    const gapCount =
+      (route.gap_segments || []).length ||
+      (route.route_geometry ? 0 : (route.route_segments || []).filter((segment) => segment.is_gap).length)
+
+    return {
+      ...route,
+      index,
+      gapCount,
+      distanceLabel: formatDistance(route.distance_km),
+      durationLabel: formatDuration(route.duration_min),
+      tone: gapCount > 0 ? 'yellow' : 'green',
+    }
+  }),
+)
 
 const warningCards = computed(() =>
-  routeSegments.value.length
+  routeGeometry.value || gapSegments.value.length || routeSegments.value.length
     ? [
           {
             id: 'alerts',
@@ -408,7 +594,9 @@ const warningCards = computed(() =>
               displayedGapCount.value > 0
               ? `${displayedGapCount.value} gap${displayedGapCount.value === 1 ? '' : 's'} detected`
               : `${routeAlerts.value.length} alert${routeAlerts.value.length === 1 ? '' : 's'}`,
-          distance: 'Live route data',
+          distance: selectedRoute.value
+            ? `${formatDistance(selectedRoute.value.distance_km)} route`
+            : 'Live route data',
           risk: displayedGapCount.value > 0 ? displayedGapCount.value : routeAlerts.value.length,
           tone: displayedGapCount.value > 0 || routeAlerts.value.length ? 'yellow' : 'green',
           summary:
@@ -429,6 +617,8 @@ const warningCards = computed(() =>
       <MapboxMap
         v-if="isInitialLocationResolved"
         :mode="mapDisplayMode"
+        :route-geometry="routeGeometry"
+        :gap-segments="gapSegments"
         :route-segments="routeSegments"
         :heatmap-regions="heatmapRegions"
         :alerts="routeAlerts"
@@ -617,6 +807,35 @@ const warningCards = computed(() =>
       <transition name="slide-up">
         <div v-if="showAnalysis" class="analysis-stack">
           <ScorePanel v-if="result" :result="result" @close="hideAnalysis" />
+
+          <div v-if="routeOptionCards.length" class="glass-panel compact-overview">
+            <div class="overview-header">
+              <h3>Route Options</h3>
+              <span class="route-count">{{ routeOptionCards.length }} routes</span>
+            </div>
+            <div class="route-option-list">
+              <button
+                v-for="route in routeOptionCards"
+                :key="route.id"
+                type="button"
+                class="route-option-card"
+                :class="[{ active: activeRouteIndex === route.index }, `route-option-${route.tone}`]"
+                @click="setActiveRoute(route.index)"
+              >
+                <span class="route-option-main">
+                  <strong>{{ route.label }}</strong>
+                  <span>{{ route.provider || 'mapbox' }}</span>
+                </span>
+                <span class="route-option-metrics">
+                  <span>{{ route.durationLabel }}</span>
+                  <span>{{ route.distanceLabel }}</span>
+                </span>
+                <span v-if="route.gapCount" class="route-option-gap">
+                  {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}
+                </span>
+              </button>
+            </div>
+          </div>
 
           <div v-if="result.explanations?.length" class="glass-panel compact-overview">
             <div class="overview-header">
