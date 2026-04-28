@@ -10,7 +10,6 @@ from urllib.request import Request, urlopen
 try:
     from Backend.database import fetch_all, fetch_scalar
     from Backend.schemas import (
-        HeatmapZone,
         RouteSegment,
         RoutingAlert,
         RoutingRequest,
@@ -19,7 +18,6 @@ try:
 except ModuleNotFoundError:
     from database import fetch_all, fetch_scalar
     from schemas import (
-        HeatmapZone,
         RouteSegment,
         RoutingAlert,
         RoutingRequest,
@@ -61,9 +59,24 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         "routing.external_lookup_ms=%.1f", (perf_counter() - external_start) * 1000
     )
 
+    route_geometry = None
+    distance_km = None
+    duration_min = None
+
     if route_points:
         build_start = perf_counter()
-        segments = build_route_segments(route_points)
+        analysis_route_points, source_indices = compress_route_points_with_source_indices(
+            route_points,
+            max_points=30,
+        )
+        segments = build_route_segments(analysis_route_points)
+        gap_segments = build_gap_segments_from_analysis_segments(
+            analysis_segments=segments,
+            full_route_points=route_points,
+            source_indices=source_indices,
+        )
+        route_geometry = route_points_to_geojson(route_points)
+        distance_km = calculate_route_distance_km(route_points)
         logger.warning(
             "routing.segment_build_from_external_ms=%.1f",
             (perf_counter() - build_start) * 1000,
@@ -79,14 +92,20 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             fallback_start = perf_counter()
             route_points = interpolate_route_points(request)
             segments = build_route_segments(route_points)
+            route_geometry = route_points_to_geojson(route_points)
+            distance_km = calculate_route_distance_km(route_points)
             logger.warning(
                 "routing.fallback_route_build_ms=%.1f",
                 (perf_counter() - fallback_start) * 1000,
             )
+        else:
+            route_geometry = route_geometry_from_segments(segments)
+            distance_km = calculate_route_distance_from_segments(segments)
+        gap_segments = [segment for segment in segments if segment.is_gap]
 
     try:
         alerts_start = perf_counter()
-        alerts = build_route_alerts(segments)
+        alerts = build_route_alerts(gap_segments)
         logger.warning(
             "routing.alerts_build_ms=%.1f",
             (perf_counter() - alerts_start) * 1000,
@@ -98,34 +117,22 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             "Safety alerts are temporarily unavailable. Please review route colors carefully."
         )
 
-    try:
-        heatmap_start = perf_counter()
-        heatmap_zones = build_heatmap_zones(segments)
-        logger.warning(
-            "routing.heatmap_build_ms=%.1f",
-            (perf_counter() - heatmap_start) * 1000,
-        )
-        heatmap_status_message = None
-    except Exception:
-        heatmap_zones = []
-        heatmap_status_message = (
-            "Safety heatmap is temporarily unavailable. Please rely on route segment colors."
-        )
-
     logger.warning(
-        "routing.total_ms=%.1f segments=%d alerts=%d heatmap_zones=%d",
+        "routing.total_ms=%.1f segments=%d alerts=%d gap_segments=%d",
         (perf_counter() - total_start) * 1000,
         len(segments),
         len(alerts),
-        len(heatmap_zones),
+        len(gap_segments),
     )
 
     return RoutingResponse(
+        route_geometry=route_geometry,
         route_segments=segments,
+        gap_segments=gap_segments,
         alerts=alerts,
         alerts_status_message=alerts_status_message,
-        heatmap_zones=heatmap_zones,
-        heatmap_status_message=heatmap_status_message,
+        distance_km=distance_km,
+        duration_min=duration_min,
         debug_signature=ROUTING_DEBUG_SIGNATURE,
     )
 
@@ -138,7 +145,11 @@ def calculate_gap_segment_count_for_request(request: RoutingRequest) -> int:
 def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegment]:
     route_points = fetch_external_route_points(request)
     if route_points:
-        return build_route_segments(route_points)
+        analysis_route_points, _ = compress_route_points_with_source_indices(
+            route_points,
+            max_points=30,
+        )
+        return build_route_segments(analysis_route_points)
 
     segments = fetch_route_segments_from_db(request)
     if segments:
@@ -203,12 +214,11 @@ def request_mapbox_route(
 
     geometry = routes[0].get("geometry", {})
     coordinates_data = geometry.get("coordinates", [])
-    route_points = [
+    return [
         (float(coordinate[1]), float(coordinate[0]))
         for coordinate in coordinates_data
         if len(coordinate) >= 2
     ]
-    return compress_route_points(route_points)
 
 
 def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
@@ -320,15 +330,33 @@ def request_ors_route(
 def compress_route_points(
     route_points: list[tuple[float, float]], max_points: int = 30
 ) -> list[tuple[float, float]]:
-    if len(route_points) <= max_points:
-        return route_points
+    compressed_points, _ = compress_route_points_with_source_indices(
+        route_points,
+        max_points=max_points,
+    )
+    return compressed_points
 
-    compressed = [route_points[0]]
+
+def compress_route_points_with_source_indices(
+    route_points: list[tuple[float, float]],
+    max_points: int = 30,
+) -> tuple[list[tuple[float, float]], list[int]]:
+    if len(route_points) <= max_points:
+        return route_points, list(range(len(route_points)))
+
+    source_indices = [0]
     for index in range(1, max_points - 1):
         source_index = round(index * (len(route_points) - 1) / (max_points - 1))
-        compressed.append(route_points[source_index])
-    compressed.append(route_points[-1])
-    return compressed
+        source_indices.append(source_index)
+    source_indices.append(len(route_points) - 1)
+
+    deduplicated_indices: list[int] = []
+    for source_index in source_indices:
+        if not deduplicated_indices or deduplicated_indices[-1] != source_index:
+            deduplicated_indices.append(source_index)
+
+    compressed_points = [route_points[source_index] for source_index in deduplicated_indices]
+    return compressed_points, deduplicated_indices
 
 
 def has_routing_data() -> bool:
@@ -451,6 +479,88 @@ def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteS
             )
         )
     return segments
+
+
+def build_gap_segments_from_analysis_segments(
+    analysis_segments: list[RouteSegment],
+    full_route_points: list[tuple[float, float]],
+    source_indices: list[int],
+) -> list[RouteSegment]:
+    gap_segments: list[RouteSegment] = []
+
+    for segment_index, segment in enumerate(analysis_segments):
+        if not segment.is_gap:
+            continue
+        if segment_index + 1 >= len(source_indices):
+            continue
+
+        start_index = source_indices[segment_index]
+        end_index = source_indices[segment_index + 1]
+        if end_index < start_index:
+            start_index, end_index = end_index, start_index
+
+        route_slice = full_route_points[start_index : end_index + 1]
+        if len(route_slice) < 2:
+            route_slice = [full_route_points[start_index], full_route_points[end_index]]
+
+        gap_segments.append(
+            RouteSegment(
+                coordinates=[
+                    [round(point[0], 6), round(point[1], 6)] for point in route_slice
+                ],
+                risk_level=segment.risk_level,
+                is_gap=True,
+            )
+        )
+
+    return gap_segments
+
+
+def route_points_to_geojson(route_points: list[tuple[float, float]]) -> dict | None:
+    if len(route_points) < 2:
+        return None
+    return {
+        "type": "LineString",
+        "coordinates": [[point[1], point[0]] for point in route_points],
+    }
+
+
+def route_geometry_from_segments(segments: list[RouteSegment]) -> dict | None:
+    route_points: list[list[float]] = []
+    for index, segment in enumerate(segments):
+        coordinates = segment.coordinates
+        if not coordinates:
+            continue
+        if index == 0:
+            route_points.extend([[point[1], point[0]] for point in coordinates])
+        else:
+            route_points.extend([[point[1], point[0]] for point in coordinates[1:]])
+    if len(route_points) < 2:
+        return None
+    return {"type": "LineString", "coordinates": route_points}
+
+
+def calculate_route_distance_km(route_points: list[tuple[float, float]]) -> float | None:
+    if len(route_points) < 2:
+        return None
+    distance_km = 0.0
+    for index in range(len(route_points) - 1):
+        distance_km += distance_m(route_points[index], route_points[index + 1]) / 1000
+    return round(distance_km, 2)
+
+
+def calculate_route_distance_from_segments(segments: list[RouteSegment]) -> float | None:
+    if not segments:
+        return None
+    distance_km = 0.0
+    for segment in segments:
+        coordinates = segment.coordinates
+        if len(coordinates) < 2:
+            continue
+        start = (coordinates[0][0], coordinates[0][1])
+        end = (coordinates[-1][0], coordinates[-1][1])
+        distance_km += distance_m(start, end) / 1000
+    return round(distance_km, 2)
 
 
 def fetch_lane_type_geometries_near_route(
@@ -628,61 +738,3 @@ def alert_position_before_segment(coordinates: list[list[float]]) -> list[float]
     ]
 
 
-def build_heatmap_zones(segments: list[RouteSegment]) -> list[HeatmapZone]:
-    zones = [zone_from_segment(segment) for segment in segments]
-    if not zones:
-        raise ValueError("No risk data available for heatmap rendering.")
-    return merge_overlapping_zones(zones)
-
-
-def zone_from_segment(segment: RouteSegment) -> HeatmapZone:
-    center = midpoint_from_segment(segment.coordinates)
-    radius_m = radius_from_risk(segment.risk_level)
-    intensity = intensity_from_risk(segment.risk_level, segment.is_gap)
-    return HeatmapZone(
-        center=center,
-        radius_m=radius_m,
-        risk_level=segment.risk_level,
-        intensity=intensity,
-    )
-
-
-def midpoint_from_segment(coordinates: list[list[float]]) -> list[float]:
-    start, end = coordinates
-    return [
-        round((start[0] + end[0]) / 2, 6),
-        round((start[1] + end[1]) / 2, 6),
-    ]
-
-
-def radius_from_risk(risk_level: str) -> int:
-    if risk_level == "Red":
-        return 180
-    if risk_level == "Yellow":
-        return 140
-    return 100
-
-
-def intensity_from_risk(risk_level: str, is_gap: bool) -> int:
-    if is_gap:
-        return 100
-    if risk_level == "Red":
-        return 90
-    if risk_level == "Yellow":
-        return 60
-    return 30
-
-
-def merge_overlapping_zones(zones: list[HeatmapZone]) -> list[HeatmapZone]:
-    merged: dict[tuple[float, float], HeatmapZone] = {}
-    for zone in zones:
-        key = (zone.center[0], zone.center[1])
-        existing = merged.get(key)
-        if existing is None or zone_priority(zone) > zone_priority(existing):
-            merged[key] = zone
-    return list(merged.values())
-
-
-def zone_priority(zone: HeatmapZone) -> tuple[int, int]:
-    risk_rank = {"Green": 0, "Yellow": 1, "Red": 2}
-    return (risk_rank[zone.risk_level], zone.intensity)

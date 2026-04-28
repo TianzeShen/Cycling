@@ -73,22 +73,14 @@ class RoutingAlert(BaseModel):
     message: str
 
 
-class HeatmapZone(BaseModel):
-    center: list[float] = Field(
-        ...,
-        description="Zone center in [latitude, longitude] format.",
-    )
-    radius_m: int
-    risk_level: RiskLevel
-    intensity: int = Field(..., ge=0, le=100)
-
-
 class RoutingResponse(BaseModel):
+    route_geometry: dict | None = None
     route_segments: list[RouteSegment] = Field(default_factory=list)
+    gap_segments: list[RouteSegment] = Field(default_factory=list)
     alerts: list[RoutingAlert] = Field(default_factory=list)
     alerts_status_message: str | None = None
-    heatmap_zones: list[HeatmapZone] = Field(default_factory=list)
-    heatmap_status_message: str | None = None
+    distance_km: float | None = None
+    duration_min: float | None = None
     debug_signature: str | None = None
 
 
