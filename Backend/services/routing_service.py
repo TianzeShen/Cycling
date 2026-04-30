@@ -694,11 +694,15 @@ def detect_gap(
 def sample_segment_points(
     start: tuple[float, float], end: tuple[float, float]
 ) -> list[tuple[float, float]]:
-    midpoint = (
-        (start[0] + end[0]) / 2,
-        (start[1] + end[1]) / 2,
-    )
-    return [start, midpoint, end]
+    segment_length_m = max(1.0, distance_m(start, end))
+    sample_count = max(3, min(25, int(segment_length_m // 20) + 2))
+    return [
+        (
+            start[0] + (end[0] - start[0]) * (index / (sample_count - 1)),
+            start[1] + (end[1] - start[1]) * (index / (sample_count - 1)),
+        )
+        for index in range(sample_count)
+    ]
 
 
 def polyline_is_near_point(
@@ -775,4 +779,3 @@ def alert_position_before_segment(coordinates: list[list[float]]) -> list[float]
         round(start[0] + (end[0] - start[0]) * 0.2, 6),
         round(start[1] + (end[1] - start[1]) * 0.2, 6),
     ]
-
