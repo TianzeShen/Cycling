@@ -6,6 +6,14 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  durationLabel: {
+    type: String,
+    default: '',
+  },
+  distanceLabel: {
+    type: String,
+    default: '',
+  },
 })
 
 const emit = defineEmits(['close'])
@@ -66,6 +74,17 @@ const scoreLabel = computed(() => {
       </div>
     </div>
 
+    <div v-if="durationLabel || distanceLabel" class="score-route-metrics">
+      <div v-if="durationLabel" class="score-route-metric">
+        <span>Time</span>
+        <strong>{{ durationLabel }}</strong>
+      </div>
+      <div v-if="distanceLabel" class="score-route-metric">
+        <span>Distance</span>
+        <strong>{{ distanceLabel }}</strong>
+      </div>
+    </div>
+
     <h2>{{ scoreLabel }}</h2>
     <p>{{ result.warning_message || 'Connected infrastructure makes cycling practical.' }}</p>
   </div>
@@ -108,6 +127,37 @@ const scoreLabel = computed(() => {
   border-radius: 50%;
   height: 12px;
   width: 12px;
+}
+
+.score-route-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 1.1rem;
+}
+
+.score-route-metric {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.score-route-metric span {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.score-route-metric strong {
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1.2;
 }
 
 .score-actions {

@@ -222,9 +222,9 @@ function normaliseRouteOptions(routeResponse) {
 }
 
 function formatDistance(distanceKm) {
-  const value = Number(distanceKm)
+  const value = toFiniteNumber(distanceKm)
 
-  if (!Number.isFinite(value)) {
+  if (value === null) {
     return 'Distance pending'
   }
 
@@ -232,9 +232,9 @@ function formatDistance(distanceKm) {
 }
 
 function formatDuration(durationMin) {
-  const value = Number(durationMin)
+  const value = toFiniteNumber(durationMin)
 
-  if (!Number.isFinite(value)) {
+  if (value === null) {
     return 'Time pending'
   }
 
@@ -584,6 +584,19 @@ const routeOptionCards = computed(() =>
   }),
 )
 
+const feasibilityInsights = computed(() =>
+  (result.value?.explanations || []).filter((item) => {
+    const factor = String(item.factor || '').toLowerCase()
+
+    return !factor.includes('gap') && !factor.includes('disconnected')
+  }),
+)
+
+const selectedRouteMetrics = computed(() => ({
+  distanceLabel: selectedRoute.value ? formatDistance(selectedRoute.value.distance_km) : '',
+  durationLabel: selectedRoute.value ? formatDuration(selectedRoute.value.duration_min) : '',
+}))
+
 const warningCards = computed(() =>
   routeGeometry.value || gapSegments.value.length || routeSegments.value.length
     ? [
@@ -806,44 +819,21 @@ const warningCards = computed(() =>
 
       <transition name="slide-up">
         <div v-if="showAnalysis" class="analysis-stack">
-          <ScorePanel v-if="result" :result="result" @close="hideAnalysis" />
+          <ScorePanel
+            v-if="result"
+            :result="result"
+            :duration-label="selectedRouteMetrics.durationLabel"
+            :distance-label="selectedRouteMetrics.distanceLabel"
+            @close="hideAnalysis"
+          />
 
-          <div v-if="routeOptionCards.length" class="glass-panel compact-overview">
-            <div class="overview-header">
-              <h3>Route Options</h3>
-              <span class="route-count">{{ routeOptionCards.length }} routes</span>
-            </div>
-            <div class="route-option-list">
-              <button
-                v-for="route in routeOptionCards"
-                :key="route.id"
-                type="button"
-                class="route-option-card"
-                :class="[{ active: activeRouteIndex === route.index }, `route-option-${route.tone}`]"
-                @click="setActiveRoute(route.index)"
-              >
-                <span class="route-option-main">
-                  <strong>{{ route.label }}</strong>
-                  <span>{{ route.provider || 'mapbox' }}</span>
-                </span>
-                <span class="route-option-metrics">
-                  <span>{{ route.durationLabel }}</span>
-                  <span>{{ route.distanceLabel }}</span>
-                </span>
-                <span v-if="route.gapCount" class="route-option-gap">
-                  {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div v-if="result.explanations?.length" class="glass-panel compact-overview">
+          <div v-if="feasibilityInsights.length" class="glass-panel compact-overview">
             <div class="overview-header">
               <h3>Feasibility Insights</h3>
             </div>
             <div class="feasibility-list">
               <article
-                v-for="item in result.explanations"
+                v-for="item in feasibilityInsights"
                 :key="`${item.factor}-${item.impact}`"
                 class="feasibility-card"
                 :class="`feasibility-${insightImpactTone(item.impact)}`"
