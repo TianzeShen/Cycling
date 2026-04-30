@@ -1189,6 +1189,11 @@ code {
   z-index: 2;
 }
 
+.input-wrapper:focus-within,
+.input-wrapper-active {
+  z-index: 120;
+}
+
 .input-wrapper input {
   background: transparent;
   border: none;

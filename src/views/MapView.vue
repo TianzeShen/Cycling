@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import MapboxMap from '../components/map/MapboxMap.vue'
 import RouteCard from '../components/RouteCard.vue'
 import ScorePanel from '../components/ScorePanel.vue'
@@ -30,6 +30,7 @@ const isInitialLocationResolved = ref(false)
 const startSuggestions = ref([])
 const destinationSuggestions = ref([])
 const activeSearchField = ref(null)
+const routeSearchContainer = ref(null)
 const searchTimers = {
   start: null,
   destination: null,
@@ -347,6 +348,20 @@ function selectSuggestion(field, suggestion) {
   activeSearchField.value = null
 }
 
+function closeAddressSuggestions() {
+  activeSearchField.value = null
+}
+
+function handleDocumentPointerDown(event) {
+  const searchElement = routeSearchContainer.value
+
+  if (!searchElement || searchElement.contains(event.target)) {
+    return
+  }
+
+  closeAddressSuggestions()
+}
+
 const isHeatmapMode = computed(
   () => mode.value === mapModes.heatmapPanel || mode.value === mapModes.heatmapMapOnly,
 )
@@ -559,6 +574,11 @@ function locateUserOnLoad() {
 
 onMounted(() => {
   locateUserOnLoad()
+  document.addEventListener('pointerdown', handleDocumentPointerDown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })
 
 const displayedGapCount = computed(() =>
@@ -676,7 +696,7 @@ const warningCards = computed(() =>
           </button>
         </div>
 
-        <div class="route-inputs-group">
+        <div ref="routeSearchContainer" class="route-inputs-group">
           <div class="route-connector">
             <div class="dot origin-dot"></div>
             <div class="line"></div>
@@ -684,7 +704,10 @@ const warningCards = computed(() =>
           </div>
 
           <div class="inputs-container">
-            <div class="input-wrapper">
+            <div
+              class="input-wrapper"
+              :class="{ 'input-wrapper-active': activeSearchField === 'start' && startSuggestions.length }"
+            >
               <input
                 v-model="start"
                 type="text"
@@ -729,7 +752,12 @@ const warningCards = computed(() =>
 
             <div class="input-divider"></div>
 
-            <div class="input-wrapper">
+            <div
+              class="input-wrapper"
+              :class="{
+                'input-wrapper-active': activeSearchField === 'destination' && destinationSuggestions.length,
+              }"
+            >
               <input
                 v-model="destination"
                 type="text"
