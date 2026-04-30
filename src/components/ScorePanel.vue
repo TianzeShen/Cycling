@@ -48,9 +48,18 @@ const scoreLabel = computed(() => {
     <div class="score-panel-head">
       <div>
         <h3>Feasibility Score</h3>
-        <div class="score-value">
+        <div
+          class="score-value score-tooltip-anchor"
+          tabindex="0"
+          aria-describedby="score-explanation-tooltip"
+        >
           <span :style="{ color: scoreColor }">{{ result.score }}</span>
           <span class="score-total">/100</span>
+          <span id="score-explanation-tooltip" class="score-tooltip" role="tooltip">
+            This score starts from 100 and adjusts for route distance, bike lane gaps, high-traffic roads,
+            missing cycling infrastructure, and protected bike lanes. Higher scores mean the route is more
+            practical for cycling.
+          </span>
         </div>
       </div>
       <div class="score-actions">
@@ -116,6 +125,59 @@ const scoreLabel = computed(() => {
   font-weight: 900;
   line-height: 1;
   margin-bottom: 1rem;
+}
+
+.score-tooltip-anchor {
+  cursor: help;
+  outline: none;
+  position: relative;
+  width: max-content;
+}
+
+.score-tooltip-anchor:focus-visible {
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+}
+
+.score-tooltip {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+  color: var(--dark);
+  font-size: 0.82rem;
+  font-weight: 600;
+  left: 0;
+  line-height: 1.45;
+  max-width: min(320px, calc(100vw - 4rem));
+  opacity: 0;
+  padding: 0.85rem 0.95rem;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 0.75rem);
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  width: 300px;
+  z-index: 80;
+}
+
+.score-tooltip::after {
+  background: #ffffff;
+  border-left: 1px solid rgba(15, 23, 42, 0.12);
+  border-top: 1px solid rgba(15, 23, 42, 0.12);
+  content: "";
+  height: 10px;
+  left: 1.25rem;
+  position: absolute;
+  top: -6px;
+  transform: rotate(45deg);
+  width: 10px;
+}
+
+.score-tooltip-anchor:hover .score-tooltip,
+.score-tooltip-anchor:focus-visible .score-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .score-total {
