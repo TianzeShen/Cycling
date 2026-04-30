@@ -212,25 +212,42 @@ function updateAlertData() {
   setSourceData('route-alerts', getAlertCollection())
 }
 
-function flyToDestination() {
-  if (
-    !mapReady.value ||
-    !props.endPoint ||
-    (!props.routeGeometry && !props.gapSegments.length && !props.routeSegments.length) ||
-    props.mode !== 'route'
-  ) {
+function collectRouteLngLatCoordinates() {
+  if (props.routeGeometry?.type === 'LineString' && Array.isArray(props.routeGeometry.coordinates)) {
+    return props.routeGeometry.coordinates.filter((coordinate) => Array.isArray(coordinate) && coordinate.length >= 2)
+  }
+
+  const segments = props.routeSegments.length ? props.routeSegments : props.gapSegments
+
+  return segments.flatMap((segment) =>
+    (segment.coordinates || []).map(toMapboxLngLat).filter((coordinate) => coordinate && coordinate.length >= 2),
+  )
+}
+
+function fitToRoute() {
+  if (!mapReady.value || props.mode !== 'route') {
     return
   }
 
-  const center = toMapboxLngLat(props.endPoint)
+  const coordinates = collectRouteLngLatCoordinates()
 
-  if (!center) {
+  if (!coordinates.length) {
     return
   }
 
-  map.value.flyTo({
-    center,
-    zoom: Math.max(map.value.getZoom(), 15),
+  const bounds = coordinates.reduce(
+    (routeBounds, coordinate) => routeBounds.extend(coordinate),
+    new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]),
+  )
+
+  map.value.fitBounds(bounds, {
+    padding: {
+      top: 96,
+      bottom: 96,
+      left: 460,
+      right: 96,
+    },
+    maxZoom: 15,
     essential: true,
     duration: 1200,
   })
@@ -557,7 +574,7 @@ watch(
   () => props.routeSegments,
   () => {
     updateRouteData()
-    flyToDestination()
+    fitToRoute()
   },
   { deep: true },
 )
@@ -566,14 +583,17 @@ watch(
   () => props.routeGeometry,
   () => {
     updateRouteData()
-    flyToDestination()
+    fitToRoute()
   },
   { deep: true },
 )
 
 watch(
   () => props.gapSegments,
-  updateRouteData,
+  () => {
+    updateRouteData()
+    fitToRoute()
+  },
   { deep: true },
 )
 
