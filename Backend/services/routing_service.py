@@ -49,19 +49,30 @@ logger = logging.getLogger("uvicorn.error")
 ROUTING_DEBUG_SIGNATURE = "routing-signature-2026-04-28-v1"
 
 
+def build_route_lookup_result(
+    route_points: list[tuple[float, float]] | None = None,
+    duration_min: float | None = None,
+) -> dict:
+    return {
+        "route_points": route_points or [],
+        "duration_min": duration_min,
+    }
+
+
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
     total_start = perf_counter()
     logger.warning("routing.started")
 
     external_start = perf_counter()
-    route_points = fetch_external_route_points(request)
+    external_route = fetch_external_route_data(request)
+    route_points = external_route["route_points"]
     logger.warning(
         "routing.external_lookup_ms=%.1f", (perf_counter() - external_start) * 1000
     )
 
     route_geometry = None
     distance_km = None
-    duration_min = None
+    duration_min = external_route["duration_min"]
 
     if route_points:
         build_start = perf_counter()
@@ -143,7 +154,7 @@ def calculate_gap_segment_count_for_request(request: RoutingRequest) -> int:
 
 
 def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegment]:
-    route_points = fetch_external_route_points(request)
+    route_points = fetch_external_route_data(request)["route_points"]
     if route_points:
         analysis_route_points, _ = compress_route_points_with_source_indices(
             route_points,
@@ -158,34 +169,34 @@ def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegme
     return build_route_segments(interpolate_route_points(request))
 
 
-def fetch_external_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
-    route_points = fetch_mapbox_route_points(request)
-    if route_points:
-        return route_points
+def fetch_external_route_data(request: RoutingRequest) -> dict:
+    route_data = fetch_mapbox_route_data(request)
+    if route_data["route_points"]:
+        return route_data
 
-    route_points = fetch_osrm_route_points(request)
-    if route_points:
-        return route_points
-    return fetch_ors_route_points(request)
+    route_data = fetch_osrm_route_data(request)
+    if route_data["route_points"]:
+        return route_data
+    return fetch_ors_route_data(request)
 
 
-def fetch_mapbox_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+def fetch_mapbox_route_data(request: RoutingRequest) -> dict:
     if not USE_MAPBOX_ROUTING:
         logger.warning("routing.mapbox_disabled=true")
-        return []
+        return build_route_lookup_result()
     if not MAPBOX_ACCESS_TOKEN:
         logger.warning("routing.mapbox_missing_access_token=true")
-        return []
+        return build_route_lookup_result()
 
-    route_points = request_mapbox_route(request, MAPBOX_PROFILE)
-    if route_points:
+    route_data = request_mapbox_route(request, MAPBOX_PROFILE)
+    if route_data["route_points"]:
         logger.warning("routing.external_provider=mapbox profile=%s", MAPBOX_PROFILE)
-    return route_points
+    return route_data
 
 
 def request_mapbox_route(
     request: RoutingRequest, profile: str
-) -> list[tuple[float, float]]:
+) -> dict:
     coordinates = (
         f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
     )
@@ -204,45 +215,56 @@ def request_mapbox_route(
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         logger.warning("routing.mapbox_http_error_code=%s", exc.code)
-        return []
+        return build_route_lookup_result()
     except (URLError, TimeoutError, ValueError):
-        return []
+        return build_route_lookup_result()
 
     routes = payload.get("routes", [])
     if not routes:
-        return []
+        return build_route_lookup_result()
 
-    geometry = routes[0].get("geometry", {})
+    primary_route = routes[0]
+    geometry = primary_route.get("geometry", {})
     coordinates_data = geometry.get("coordinates", [])
-    return [
+    route_points = [
         (float(coordinate[1]), float(coordinate[0]))
         for coordinate in coordinates_data
         if len(coordinate) >= 2
     ]
+    duration_seconds = primary_route.get("duration")
+    duration_min = (
+        round(float(duration_seconds) / 60, 1)
+        if duration_seconds is not None
+        else None
+    )
+    return build_route_lookup_result(
+        route_points=route_points,
+        duration_min=duration_min,
+    )
 
 
-def fetch_osrm_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+def fetch_osrm_route_data(request: RoutingRequest) -> dict:
     if not USE_OSRM_ROUTING:
         logger.warning("routing.osrm_disabled=true")
-        return []
+        return build_route_lookup_result()
 
-    route_points = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
-    if route_points:
+    route_data = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
+    if route_data["route_points"]:
         logger.warning("routing.external_provider=osrm profile=%s", OSRM_PRIMARY_PROFILE)
-        return route_points
+        return route_data
 
     if OSRM_FALLBACK_PROFILE == OSRM_PRIMARY_PROFILE:
-        return []
+        return build_route_lookup_result()
 
-    route_points = request_osrm_route(request, OSRM_FALLBACK_PROFILE)
-    if route_points:
+    route_data = request_osrm_route(request, OSRM_FALLBACK_PROFILE)
+    if route_data["route_points"]:
         logger.warning("routing.external_provider=osrm profile=%s", OSRM_FALLBACK_PROFILE)
-    return route_points
+    return route_data
 
 
 def request_osrm_route(
     request: RoutingRequest, profile: str
-) -> list[tuple[float, float]]:
+) -> dict:
     coordinates = (
         f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
     )
@@ -255,36 +277,46 @@ def request_osrm_route(
         with urlopen(url, timeout=OSRM_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError, ValueError):
-        return []
+        return build_route_lookup_result()
 
     routes = payload.get("routes", [])
     if not routes:
-        return []
+        return build_route_lookup_result()
 
-    geometry = routes[0].get("geometry", {})
+    primary_route = routes[0]
+    geometry = primary_route.get("geometry", {})
     coordinates_data = geometry.get("coordinates", [])
     route_points = [
         (float(coordinate[1]), float(coordinate[0]))
         for coordinate in coordinates_data
         if len(coordinate) >= 2
     ]
-    return compress_route_points(route_points)
+    duration_seconds = primary_route.get("duration")
+    duration_min = (
+        round(float(duration_seconds) / 60, 1)
+        if duration_seconds is not None
+        else None
+    )
+    return build_route_lookup_result(
+        route_points=compress_route_points(route_points),
+        duration_min=duration_min,
+    )
 
 
-def fetch_ors_route_points(request: RoutingRequest) -> list[tuple[float, float]]:
+def fetch_ors_route_data(request: RoutingRequest) -> dict:
     if not USE_ORS_ROUTING:
         logger.warning("routing.ors_disabled=true")
-        return []
+        return build_route_lookup_result()
     if not ORS_API_KEY:
         logger.warning("routing.ors_missing_api_key=true")
-        return []
+        return build_route_lookup_result()
     logger.warning("routing.external_provider=ors profile=%s", ORS_PROFILE)
     return request_ors_route(request, ORS_PROFILE)
 
 
 def request_ors_route(
     request: RoutingRequest, profile: str
-) -> list[tuple[float, float]]:
+) -> dict:
     url = f"{ORS_BASE_URL.rstrip('/')}/v2/directions/{profile}/geojson"
     post_body = {
         "coordinates": [
@@ -309,22 +341,33 @@ def request_ors_route(
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         logger.warning("routing.ors_http_error_code=%s", exc.code)
-        return []
+        return build_route_lookup_result()
     except (URLError, TimeoutError, ValueError):
-        return []
+        return build_route_lookup_result()
 
     features = payload.get("features", [])
     if not features:
-        return []
+        return build_route_lookup_result()
 
-    geometry = features[0].get("geometry", {})
+    feature = features[0]
+    geometry = feature.get("geometry", {})
     coordinates_data = geometry.get("coordinates", [])
     route_points = [
         (float(coordinate[1]), float(coordinate[0]))
         for coordinate in coordinates_data
         if len(coordinate) >= 2
     ]
-    return compress_route_points(route_points)
+    summary = feature.get("properties", {}).get("summary", {})
+    duration_seconds = summary.get("duration")
+    duration_min = (
+        round(float(duration_seconds) / 60, 1)
+        if duration_seconds is not None
+        else None
+    )
+    return build_route_lookup_result(
+        route_points=compress_route_points(route_points),
+        duration_min=duration_min,
+    )
 
 
 def compress_route_points(
@@ -651,15 +694,11 @@ def detect_gap(
 def sample_segment_points(
     start: tuple[float, float], end: tuple[float, float]
 ) -> list[tuple[float, float]]:
-    segment_length_m = max(1.0, distance_m(start, end))
-    sample_count = max(3, min(25, int(segment_length_m // 20) + 2))
-    return [
-        (
-            start[0] + (end[0] - start[0]) * (index / (sample_count - 1)),
-            start[1] + (end[1] - start[1]) * (index / (sample_count - 1)),
-        )
-        for index in range(sample_count)
-    ]
+    midpoint = (
+        (start[0] + end[0]) / 2,
+        (start[1] + end[1]) / 2,
+    )
+    return [start, midpoint, end]
 
 
 def polyline_is_near_point(
@@ -736,5 +775,4 @@ def alert_position_before_segment(coordinates: list[list[float]]) -> list[float]
         round(start[0] + (end[0] - start[0]) * 0.2, 6),
         round(start[1] + (end[1] - start[1]) * 0.2, 6),
     ]
-
 
