@@ -12,6 +12,7 @@ try:
     from Backend.schemas import (
         RouteSegment,
         RoutingAlert,
+        RoutingOption,
         RoutingRequest,
         RoutingResponse,
     )
@@ -20,6 +21,7 @@ except ModuleNotFoundError:
     from schemas import (
         RouteSegment,
         RoutingAlert,
+        RoutingOption,
         RoutingRequest,
         RoutingResponse,
     )
@@ -50,13 +52,91 @@ ROUTING_DEBUG_SIGNATURE = "routing-signature-2026-04-28-v1"
 
 
 def build_route_lookup_result(
-    route_points: list[tuple[float, float]] | None = None,
-    duration_min: float | None = None,
+    routes: list[dict] | None = None,
 ) -> dict:
     return {
-        "route_points": route_points or [],
-        "duration_min": duration_min,
+        "routes": routes or [],
     }
+
+
+def route_label(route_index: int) -> str:
+    if route_index == 0:
+        return "Recommended"
+    return f"Alternative {route_index}"
+
+
+def calculate_route_safety_score(
+    route_segments: list[RouteSegment],
+    gap_segments: list[RouteSegment],
+    alerts: list[RoutingAlert],
+) -> int:
+    total_segments = max(1, len(route_segments))
+    gap_count = len(gap_segments)
+    gap_ratio = gap_count / total_segments
+    gap_penalty = gap_ratio * 70
+    count_penalty = min(gap_count * 8, 24)
+    alert_penalty = min(len(alerts) * 2, 6)
+    raw_score = 100 - gap_penalty - count_penalty - alert_penalty
+    return max(0, min(100, round(raw_score)))
+
+
+def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
+    if not route_options:
+        return
+
+    if len(route_options) == 1:
+        route_options[0].label = "Recommended"
+        return
+
+    remaining_indices = list(range(len(route_options)))
+    fastest_index = min(
+        remaining_indices,
+        key=lambda index: (
+            route_options[index].duration_min
+            if route_options[index].duration_min is not None
+            else float("inf"),
+            route_options[index].distance_km
+            if route_options[index].distance_km is not None
+            else float("inf"),
+            index,
+        ),
+    )
+    route_options[fastest_index].label = "Fastest"
+    remaining_indices.remove(fastest_index)
+
+    if not remaining_indices:
+        return
+
+    safest_index = max(
+        remaining_indices,
+        key=lambda index: (
+            route_options[index].safety_score
+            if route_options[index].safety_score is not None
+            else -1,
+            -(
+                route_options[index].duration_min
+                if route_options[index].duration_min is not None
+                else float("inf")
+            ),
+            -(
+                route_options[index].distance_km
+                if route_options[index].distance_km is not None
+                else float("inf")
+            ),
+        ),
+    )
+    route_options[safest_index].label = "Safest"
+    remaining_indices.remove(safest_index)
+
+    if not remaining_indices:
+        return
+
+    if len(remaining_indices) == 1:
+        route_options[remaining_indices[0]].label = "Balanced"
+        return
+
+    for index in remaining_indices:
+        route_options[index].label = "Balanced"
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
@@ -65,44 +145,89 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
 
     external_start = perf_counter()
     external_route = fetch_external_route_data(request)
-    route_points = external_route["route_points"]
+    external_routes = external_route["routes"]
     logger.warning(
         "routing.external_lookup_ms=%.1f", (perf_counter() - external_start) * 1000
     )
 
+    route_options: list[RoutingOption] = []
     route_geometry = None
+    route_segments: list[RouteSegment] = []
+    gap_segments: list[RouteSegment] = []
+    alerts: list[RoutingAlert] = []
     distance_km = None
-    duration_min = external_route["duration_min"]
+    duration_min = None
+    alerts_status_message = None
 
-    if route_points:
+    if external_routes:
         build_start = perf_counter()
-        analysis_route_points, source_indices = compress_route_points_with_source_indices(
-            route_points,
-            max_points=30,
-        )
-        segments = build_route_segments(analysis_route_points)
-        gap_segments = build_gap_segments_from_analysis_segments(
-            analysis_segments=segments,
-            full_route_points=route_points,
-            source_indices=source_indices,
-        )
-        route_geometry = route_points_to_geojson(route_points)
-        distance_km = calculate_route_distance_km(route_points)
+        try:
+            alerts_start = perf_counter()
+            for route_index, route_data in enumerate(external_routes):
+                route_points = route_data["route_points"]
+                analysis_route_points, source_indices = compress_route_points_with_source_indices(
+                    route_points,
+                    max_points=30,
+                )
+                segments = build_route_segments(analysis_route_points)
+                option_gap_segments = build_gap_segments_from_analysis_segments(
+                    analysis_segments=segments,
+                    full_route_points=route_points,
+                    source_indices=source_indices,
+                )
+                option_alerts = build_route_alerts(option_gap_segments)
+                option = RoutingOption(
+                    label=route_label(route_index),
+                    provider=route_data["provider"],
+                    route_geometry=route_points_to_geojson(route_points),
+                    route_segments=segments,
+                    gap_segments=option_gap_segments,
+                    alerts=option_alerts,
+                    distance_km=calculate_route_distance_km(route_points),
+                    duration_min=route_data["duration_min"],
+                    safety_score=calculate_route_safety_score(
+                        segments,
+                        option_gap_segments,
+                        option_alerts,
+                    ),
+                )
+                route_options.append(option)
+            assign_route_option_labels(route_options)
+            logger.warning(
+                "routing.alerts_build_ms=%.1f",
+                (perf_counter() - alerts_start) * 1000,
+            )
+        except Exception:
+            route_options = []
+            alerts_status_message = (
+                "Safety alerts are temporarily unavailable. Please review route colors carefully."
+            )
+
+        if route_options:
+            primary_option = route_options[0]
+            route_geometry = primary_option.route_geometry
+            route_segments = primary_option.route_segments
+            gap_segments = primary_option.gap_segments
+            alerts = primary_option.alerts
+            distance_km = primary_option.distance_km
+            duration_min = primary_option.duration_min
+        else:
+            external_routes = []
         logger.warning(
             "routing.segment_build_from_external_ms=%.1f",
             (perf_counter() - build_start) * 1000,
         )
-    else:
+    if not external_routes:
         db_start = perf_counter()
-        segments = fetch_route_segments_from_db(request)
+        route_segments = fetch_route_segments_from_db(request)
         logger.warning(
             "routing.db_route_lookup_ms=%.1f",
             (perf_counter() - db_start) * 1000,
         )
-        if not segments:
+        if not route_segments:
             fallback_start = perf_counter()
             route_points = interpolate_route_points(request)
-            segments = build_route_segments(route_points)
+            route_segments = build_route_segments(route_points)
             route_geometry = route_points_to_geojson(route_points)
             distance_km = calculate_route_distance_km(route_points)
             logger.warning(
@@ -110,40 +235,59 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 (perf_counter() - fallback_start) * 1000,
             )
         else:
-            route_geometry = route_geometry_from_segments(segments)
-            distance_km = calculate_route_distance_from_segments(segments)
-        gap_segments = [segment for segment in segments if segment.is_gap]
+            route_geometry = route_geometry_from_segments(route_segments)
+            distance_km = calculate_route_distance_from_segments(route_segments)
+        gap_segments = [segment for segment in route_segments if segment.is_gap]
 
-    try:
-        alerts_start = perf_counter()
-        alerts = build_route_alerts(gap_segments)
-        logger.warning(
-            "routing.alerts_build_ms=%.1f",
-            (perf_counter() - alerts_start) * 1000,
-        )
-        alerts_status_message = None
-    except Exception:
-        alerts = []
-        alerts_status_message = (
-            "Safety alerts are temporarily unavailable. Please review route colors carefully."
-        )
+        try:
+            alerts_start = perf_counter()
+            alerts = build_route_alerts(gap_segments)
+            logger.warning(
+                "routing.alerts_build_ms=%.1f",
+                (perf_counter() - alerts_start) * 1000,
+            )
+        except Exception:
+            alerts = []
+            alerts_status_message = (
+                "Safety alerts are temporarily unavailable. Please review route colors carefully."
+            )
+
+        route_options = [
+            RoutingOption(
+                label="Recommended",
+                provider="database-fallback",
+                route_geometry=route_geometry,
+                route_segments=route_segments,
+                gap_segments=gap_segments,
+                alerts=alerts,
+                distance_km=distance_km,
+                duration_min=duration_min,
+                safety_score=calculate_route_safety_score(
+                    route_segments,
+                    gap_segments,
+                    alerts,
+                ),
+            )
+        ]
 
     logger.warning(
-        "routing.total_ms=%.1f segments=%d alerts=%d gap_segments=%d",
+        "routing.total_ms=%.1f segments=%d alerts=%d gap_segments=%d route_options=%d",
         (perf_counter() - total_start) * 1000,
-        len(segments),
+        len(route_segments),
         len(alerts),
         len(gap_segments),
+        len(route_options),
     )
 
     return RoutingResponse(
         route_geometry=route_geometry,
-        route_segments=segments,
+        route_segments=route_segments,
         gap_segments=gap_segments,
         alerts=alerts,
         alerts_status_message=alerts_status_message,
         distance_km=distance_km,
         duration_min=duration_min,
+        route_options=route_options,
         debug_signature=ROUTING_DEBUG_SIGNATURE,
     )
 
@@ -154,8 +298,9 @@ def calculate_gap_segment_count_for_request(request: RoutingRequest) -> int:
 
 
 def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegment]:
-    route_points = fetch_external_route_data(request)["route_points"]
-    if route_points:
+    external_routes = fetch_external_route_data(request)["routes"]
+    if external_routes:
+        route_points = external_routes[0]["route_points"]
         analysis_route_points, _ = compress_route_points_with_source_indices(
             route_points,
             max_points=30,
@@ -171,11 +316,11 @@ def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegme
 
 def fetch_external_route_data(request: RoutingRequest) -> dict:
     route_data = fetch_mapbox_route_data(request)
-    if route_data["route_points"]:
+    if route_data["routes"]:
         return route_data
 
     route_data = fetch_osrm_route_data(request)
-    if route_data["route_points"]:
+    if route_data["routes"]:
         return route_data
     return fetch_ors_route_data(request)
 
@@ -189,7 +334,7 @@ def fetch_mapbox_route_data(request: RoutingRequest) -> dict:
         return build_route_lookup_result()
 
     route_data = request_mapbox_route(request, MAPBOX_PROFILE)
-    if route_data["route_points"]:
+    if route_data["routes"]:
         logger.warning("routing.external_provider=mapbox profile=%s", MAPBOX_PROFILE)
     return route_data
 
@@ -206,6 +351,7 @@ def request_mapbox_route(
             "geometries": "geojson",
             "overview": "full",
             "steps": "false",
+            "alternatives": "true",
         }
     )
     url = f"{MAPBOX_BASE_URL.rstrip('/')}/directions/v5/{profile}/{coordinates}?{query}"
@@ -223,24 +369,31 @@ def request_mapbox_route(
     if not routes:
         return build_route_lookup_result()
 
-    primary_route = routes[0]
-    geometry = primary_route.get("geometry", {})
-    coordinates_data = geometry.get("coordinates", [])
-    route_points = [
-        (float(coordinate[1]), float(coordinate[0]))
-        for coordinate in coordinates_data
-        if len(coordinate) >= 2
-    ]
-    duration_seconds = primary_route.get("duration")
-    duration_min = (
-        round(float(duration_seconds) / 60, 1)
-        if duration_seconds is not None
-        else None
-    )
-    return build_route_lookup_result(
-        route_points=route_points,
-        duration_min=duration_min,
-    )
+    built_routes: list[dict] = []
+    for route in routes[:3]:
+        geometry = route.get("geometry", {})
+        coordinates_data = geometry.get("coordinates", [])
+        route_points = [
+            (float(coordinate[1]), float(coordinate[0]))
+            for coordinate in coordinates_data
+            if len(coordinate) >= 2
+        ]
+        if not route_points:
+            continue
+        duration_seconds = route.get("duration")
+        duration_min = (
+            round(float(duration_seconds) / 60, 1)
+            if duration_seconds is not None
+            else None
+        )
+        built_routes.append(
+            {
+                "provider": "mapbox",
+                "route_points": route_points,
+                "duration_min": duration_min,
+            }
+        )
+    return build_route_lookup_result(routes=built_routes)
 
 
 def fetch_osrm_route_data(request: RoutingRequest) -> dict:
@@ -249,7 +402,7 @@ def fetch_osrm_route_data(request: RoutingRequest) -> dict:
         return build_route_lookup_result()
 
     route_data = request_osrm_route(request, OSRM_PRIMARY_PROFILE)
-    if route_data["route_points"]:
+    if route_data["routes"]:
         logger.warning("routing.external_provider=osrm profile=%s", OSRM_PRIMARY_PROFILE)
         return route_data
 
@@ -257,7 +410,7 @@ def fetch_osrm_route_data(request: RoutingRequest) -> dict:
         return build_route_lookup_result()
 
     route_data = request_osrm_route(request, OSRM_FALLBACK_PROFILE)
-    if route_data["route_points"]:
+    if route_data["routes"]:
         logger.warning("routing.external_provider=osrm profile=%s", OSRM_FALLBACK_PROFILE)
     return route_data
 
@@ -298,8 +451,13 @@ def request_osrm_route(
         else None
     )
     return build_route_lookup_result(
-        route_points=compress_route_points(route_points),
-        duration_min=duration_min,
+        routes=[
+            {
+                "provider": "osrm",
+                "route_points": compress_route_points(route_points),
+                "duration_min": duration_min,
+            }
+        ]
     )
 
 
@@ -365,8 +523,13 @@ def request_ors_route(
         else None
     )
     return build_route_lookup_result(
-        route_points=compress_route_points(route_points),
-        duration_min=duration_min,
+        routes=[
+            {
+                "provider": "ors",
+                "route_points": compress_route_points(route_points),
+                "duration_min": duration_min,
+            }
+        ]
     )
 
 
