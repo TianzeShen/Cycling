@@ -181,10 +181,23 @@ function normaliseRouteOptions(routeResponse) {
       const route = {
         ...option,
         id: `${option.provider || 'route'}-${option.label || index}-${index}`,
-        label: option.label || (index === 0 ? 'Recommended' : `Alternative ${index}`),
-        route_geometry: option.route_geometry || routeResponse.route_geometry || null,
-        gap_segments: Array.isArray(option.gap_segments) ? option.gap_segments : [],
-        route_segments: Array.isArray(option.route_segments) ? option.route_segments : [],
+        label: option.label || `Route ${index + 1}`,
+        route_geometry: option.route_geometry || (index === 0 ? routeResponse.route_geometry : null) || null,
+        gap_segments: Array.isArray(option.gap_segments)
+          ? option.gap_segments
+          : index === 0 && Array.isArray(routeResponse.gap_segments)
+            ? routeResponse.gap_segments
+            : [],
+        route_segments: Array.isArray(option.route_segments)
+          ? option.route_segments
+          : index === 0 && Array.isArray(routeResponse.route_segments)
+            ? routeResponse.route_segments
+            : [],
+        alerts: Array.isArray(option.alerts)
+          ? option.alerts
+          : index === 0 && Array.isArray(routeResponse.alerts)
+            ? routeResponse.alerts
+            : [],
       }
 
       return {
@@ -240,6 +253,16 @@ function formatDuration(durationMin) {
   }
 
   return `${Math.round(value)} min`
+}
+
+function formatSafetyScore(score) {
+  const value = toFiniteNumber(score)
+
+  if (value === null) {
+    return 'Safety pending'
+  }
+
+  return `Safety ${Math.round(value)}`
 }
 
 function setActiveRoute(index) {
@@ -599,6 +622,7 @@ const routeOptionCards = computed(() =>
       gapCount,
       distanceLabel: formatDistance(route.distance_km),
       durationLabel: formatDuration(route.duration_min),
+      safetyLabel: formatSafetyScore(route.safety_score),
       tone: gapCount > 0 ? 'yellow' : 'green',
     }
   }),
