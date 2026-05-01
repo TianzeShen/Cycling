@@ -639,6 +639,7 @@ const feasibilityInsights = computed(() =>
 const selectedRouteMetrics = computed(() => ({
   distanceLabel: selectedRoute.value ? formatDistance(selectedRoute.value.distance_km) : '',
   durationLabel: selectedRoute.value ? formatDuration(selectedRoute.value.duration_min) : '',
+  score: selectedRoute.value ? toFiniteNumber(selectedRoute.value.safety_score) : null,
 }))
 
 const warningCards = computed(() =>
@@ -876,6 +877,7 @@ const warningCards = computed(() =>
           <ScorePanel
             v-if="result"
             :result="result"
+            :score="selectedRouteMetrics.score"
             :duration-label="selectedRouteMetrics.durationLabel"
             :distance-label="selectedRouteMetrics.distanceLabel"
             @close="hideAnalysis"

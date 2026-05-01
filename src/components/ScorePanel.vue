@@ -14,16 +14,26 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  score: {
+    type: Number,
+    default: null,
+  },
 })
 
 const emit = defineEmits(['close'])
 
+const displayScore = computed(() => {
+  const value = Number(props.score ?? props.result.score)
+
+  return Number.isFinite(value) ? Math.round(value) : 0
+})
+
 const scoreColor = computed(() => {
-  if (props.result.score >= 80) {
+  if (displayScore.value >= 80) {
     return 'var(--primary)'
   }
 
-  if (props.result.score >= 50) {
+  if (displayScore.value >= 50) {
     return '#f59e0b'
   }
 
@@ -31,11 +41,11 @@ const scoreColor = computed(() => {
 })
 
 const scoreLabel = computed(() => {
-  if (props.result.score >= 80) {
+  if (displayScore.value >= 80) {
     return 'Optimal Route'
   }
 
-  if (props.result.score >= 50) {
+  if (displayScore.value >= 50) {
     return 'Caution Advised'
   }
 
@@ -53,7 +63,7 @@ const scoreLabel = computed(() => {
           tabindex="0"
           aria-describedby="score-explanation-tooltip"
         >
-          <span :style="{ color: scoreColor }">{{ result.score }}</span>
+          <span :style="{ color: scoreColor }">{{ displayScore }}</span>
           <span class="score-total">/100</span>
           <span id="score-explanation-tooltip" class="score-tooltip" role="tooltip">
             This score starts from 100 and adjusts for route distance, bike lane gaps, high-traffic roads,
