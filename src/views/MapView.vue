@@ -675,6 +675,8 @@ const warningCards = computed(() =>
         v-if="isInitialLocationResolved"
         :mode="mapDisplayMode"
         :route-geometry="routeGeometry"
+        :route-options="routeOptions"
+        :active-route-index="activeRouteIndex"
         :gap-segments="gapSegments"
         :route-segments="routeSegments"
         :heatmap-regions="heatmapRegions"
@@ -878,6 +880,39 @@ const warningCards = computed(() =>
             :distance-label="selectedRouteMetrics.distanceLabel"
             @close="hideAnalysis"
           />
+
+          <div v-if="routeOptionCards.length" class="glass-panel compact-overview">
+            <div class="overview-header">
+              <h3>Routes</h3>
+              <span class="route-count">{{ routeOptionCards.length }} options</span>
+            </div>
+            <div class="route-option-list">
+              <button
+                v-for="route in routeOptionCards"
+                :key="route.id"
+                type="button"
+                class="route-option-card"
+                :class="[
+                  `route-option-${route.tone}`,
+                  { active: route.index === activeRouteIndex },
+                ]"
+                @click="setActiveRoute(route.index)"
+              >
+                <span class="route-option-main">
+                  <strong>{{ route.label }}</strong>
+                  <span>{{ route.provider || 'Route provider' }}</span>
+                </span>
+                <span class="route-option-metrics">
+                  <strong>{{ route.durationLabel }}</strong>
+                  <span>{{ route.distanceLabel }}</span>
+                  <span>{{ route.safetyLabel }}</span>
+                </span>
+                <span v-if="route.gapCount" class="route-option-gap">
+                  {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}
+                </span>
+              </button>
+            </div>
+          </div>
 
           <div v-if="feasibilityInsights.length" class="glass-panel compact-overview">
             <div class="overview-header">

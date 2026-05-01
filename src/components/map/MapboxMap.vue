@@ -13,6 +13,14 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  routeOptions: {
+    type: Array,
+    default: () => [],
+  },
+  activeRouteIndex: {
+    type: Number,
+    default: 0,
+  },
   gapSegments: {
     type: Array,
     default: () => [],
@@ -83,9 +91,31 @@ function getMainRouteCollection() {
     }
   }
 
+  return emptyCollection()
+}
+
+function routeOptionToFeature(route, index) {
+  if (route?.route_geometry?.type === 'LineString' && Array.isArray(route.route_geometry.coordinates)) {
+    return {
+      type: 'Feature',
+      properties: {
+        label: route.label || `Route ${index + 1}`,
+        provider: route.provider || '',
+        routeIndex: index,
+      },
+      geometry: route.route_geometry,
+    }
+  }
+
+  return null
+}
+
+function getAlternativeRouteCollection() {
   return {
     type: 'FeatureCollection',
-    features: props.routeSegments.map(segmentToGeoJson),
+    features: props.routeOptions
+      .map(routeOptionToFeature)
+      .filter((feature) => feature && feature.properties.routeIndex !== props.activeRouteIndex),
   }
 }
 
@@ -174,6 +204,7 @@ function updateRouteData() {
     return
   }
 
+  setSourceData('route-alternatives', getAlternativeRouteCollection())
   setSourceData('route-main', getMainRouteCollection())
   setSourceData('route-gaps', getGapRouteCollection())
 }
@@ -213,11 +244,17 @@ function updateAlertData() {
 }
 
 function collectRouteLngLatCoordinates() {
+  if (props.routeOptions.length > 1) {
+    return props.routeOptions
+      .flatMap((route, index) => routeOptionToFeature(route, index)?.geometry?.coordinates || [])
+      .filter((coordinate) => Array.isArray(coordinate) && coordinate.length >= 2)
+  }
+
   if (props.routeGeometry?.type === 'LineString' && Array.isArray(props.routeGeometry.coordinates)) {
     return props.routeGeometry.coordinates.filter((coordinate) => Array.isArray(coordinate) && coordinate.length >= 2)
   }
 
-  const segments = props.routeSegments.length ? props.routeSegments : props.gapSegments
+  const segments = props.gapSegments
 
   return segments.flatMap((segment) =>
     (segment.coordinates || []).map(toMapboxLngLat).filter((coordinate) => coordinate && coordinate.length >= 2),
@@ -260,6 +297,7 @@ function updateLayerVisibility() {
 
   const isHeatmap = props.mode === 'heatmap'
 
+  setLayerVisibility('route-alternative-lines', !isHeatmap)
   setLayerVisibility('route-segment-lines', !isHeatmap)
   setLayerVisibility('route-gap-lines', !isHeatmap)
   setLayerVisibility('route-gap-lines-dash', !isHeatmap)
@@ -283,6 +321,12 @@ function addMapSources() {
   map.value.addSource('route-main', {
     type: 'geojson',
     data: getMainRouteCollection(),
+    tolerance: 0.8,
+  })
+
+  map.value.addSource('route-alternatives', {
+    type: 'geojson',
+    data: getAlternativeRouteCollection(),
     tolerance: 0.8,
   })
 
@@ -315,6 +359,21 @@ function addMapSources() {
 }
 
 function addMapLayers() {
+  map.value.addLayer({
+    id: 'route-alternative-lines',
+    type: 'line',
+    source: 'route-alternatives',
+    paint: {
+      'line-width': 5,
+      'line-opacity': 0.36,
+      'line-color': '#64748b',
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  })
+
   map.value.addLayer({
     id: 'route-segment-lines',
     type: 'line',
@@ -586,6 +645,20 @@ watch(
     fitToRoute()
   },
   { deep: true },
+)
+
+watch(
+  () => props.routeOptions,
+  () => {
+    updateRouteData()
+    fitToRoute()
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.activeRouteIndex,
+  updateRouteData,
 )
 
 watch(
