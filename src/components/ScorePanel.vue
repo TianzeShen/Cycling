@@ -14,21 +14,21 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  score: {
-    type: Number,
-    default: null,
-  },
 })
 
 const emit = defineEmits(['close'])
 
 const displayScore = computed(() => {
-  const value = Number(props.score ?? props.result.score)
+  const value = Number(props.result.score)
 
-  return Number.isFinite(value) ? Math.round(value) : 0
+  return Number.isFinite(value) ? Math.round(value) : null
 })
 
 const scoreColor = computed(() => {
+  if (displayScore.value === null) {
+    return '#94a3b8'
+  }
+
   if (displayScore.value >= 80) {
     return 'var(--primary)'
   }
@@ -41,6 +41,10 @@ const scoreColor = computed(() => {
 })
 
 const scoreLabel = computed(() => {
+  if (displayScore.value === null) {
+    return 'Score Pending'
+  }
+
   if (displayScore.value >= 80) {
     return 'Optimal Route'
   }
@@ -50,6 +54,22 @@ const scoreLabel = computed(() => {
   }
 
   return 'High Risk'
+})
+
+const warningMessage = computed(() => {
+  if (displayScore.value === null) {
+    return 'The routing service did not return a feasibility score for this route yet.'
+  }
+
+  if (props.result.warning_message) {
+    return props.result.warning_message
+  }
+
+  if (props.result.is_supported_area === false) {
+    return 'This route is outside the currently supported scoring area. Please review the route carefully before riding.'
+  }
+
+  return 'Connected infrastructure makes cycling practical.'
 })
 </script>
 
@@ -63,7 +83,7 @@ const scoreLabel = computed(() => {
           tabindex="0"
           aria-describedby="score-explanation-tooltip"
         >
-          <span :style="{ color: scoreColor }">{{ displayScore }}</span>
+          <span :style="{ color: scoreColor }">{{ displayScore ?? '--' }}</span>
           <span class="score-total">/100</span>
           <span id="score-explanation-tooltip" class="score-tooltip" role="tooltip">
             This score starts from 100 and adjusts for route distance, bike lane gaps, high-traffic roads,
@@ -105,7 +125,7 @@ const scoreLabel = computed(() => {
     </div>
 
     <h2>{{ scoreLabel }}</h2>
-    <p>{{ result.warning_message || 'Connected infrastructure makes cycling practical.' }}</p>
+    <p>{{ warningMessage }}</p>
   </div>
 </template>
 

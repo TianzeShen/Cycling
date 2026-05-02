@@ -5,7 +5,6 @@ import RouteCard from '../components/RouteCard.vue'
 import ScorePanel from '../components/ScorePanel.vue'
 import {
   defaultCoordinates,
-  evaluateFeasibility,
   getMelbourneSa2Heatmap,
   recommendRoute,
   reverseMapboxPlace,
@@ -173,6 +172,13 @@ function resolveDurationMin(route, fallback = null) {
   )
 }
 
+function resolveRouteScore(route, fallback = null) {
+  return (
+    readFirstNumber(route, ['score']) ??
+    readFirstNumber(fallback, ['score'])
+  )
+}
+
 function normaliseRouteOptions(routeResponse) {
   const options = Array.isArray(routeResponse?.route_options) ? routeResponse.route_options : []
 
@@ -198,6 +204,14 @@ function normaliseRouteOptions(routeResponse) {
           : index === 0 && Array.isArray(routeResponse.alerts)
             ? routeResponse.alerts
             : [],
+        score: resolveRouteScore(option, index === 0 ? routeResponse : null),
+        warning_message: option.warning_message || (index === 0 ? routeResponse.warning_message : '') || '',
+        explanations: Array.isArray(option.explanations)
+          ? option.explanations
+          : index === 0 && Array.isArray(routeResponse.explanations)
+            ? routeResponse.explanations
+            : [],
+        is_supported_area: option.is_supported_area ?? (index === 0 ? routeResponse.is_supported_area : null) ?? null,
       }
 
       return {
@@ -221,6 +235,10 @@ function normaliseRouteOptions(routeResponse) {
       gap_segments: Array.isArray(routeResponse.gap_segments) ? routeResponse.gap_segments : [],
       route_segments: Array.isArray(routeResponse.route_segments) ? routeResponse.route_segments : [],
       alerts: routeResponse.alerts || [],
+      score: resolveRouteScore(routeResponse),
+      warning_message: routeResponse.warning_message || '',
+      explanations: Array.isArray(routeResponse.explanations) ? routeResponse.explanations : [],
+      is_supported_area: routeResponse.is_supported_area ?? null,
     }
 
     return [
@@ -255,14 +273,14 @@ function formatDuration(durationMin) {
   return `${Math.round(value)} min`
 }
 
-function formatSafetyScore(score) {
+function formatRouteScore(score) {
   const value = toFiniteNumber(score)
 
   if (value === null) {
-    return 'Safety pending'
+    return 'Score pending'
   }
 
-  return `Safety ${Math.round(value)}`
+  return `Score ${Math.round(value)}`
 }
 
 function setActiveRoute(index) {
@@ -272,6 +290,7 @@ function setActiveRoute(index) {
 
   activeRouteIndex.value = index
   const route = routeOptions.value[index]
+  result.value = route
   routeGeometry.value = route.route_geometry || null
   gapSegments.value = route.gap_segments || []
   routeSegments.value = route.route_segments || []
@@ -440,52 +459,30 @@ async function evaluateJourney() {
   }
 
   try {
-    const [feasibilityResult, routeResult] = await Promise.allSettled([
-      evaluateFeasibility(payload),
-      recommendRoute(payload),
-    ])
+    const routeResult = await recommendRoute(payload)
+    routeOptions.value = normaliseRouteOptions(routeResult)
+    activeRouteIndex.value = 0
+    routeAlertsStatusMessage.value = routeResult.alerts_status_message || ''
+    result.value = routeOptions.value[0] || null
 
-    if (feasibilityResult.status === 'fulfilled') {
-      result.value = feasibilityResult.value
+    if (routeOptions.value.length) {
+      setActiveRoute(0)
     } else {
-      result.value = null
-    }
-
-    if (routeResult.status === 'fulfilled') {
-      routeOptions.value = normaliseRouteOptions(routeResult.value)
-      activeRouteIndex.value = 0
-      routeAlertsStatusMessage.value = routeResult.value.alerts_status_message || ''
-
-      if (routeOptions.value.length) {
-        setActiveRoute(0)
-      } else {
-        routeAlerts.value = []
-        routeGeometry.value = null
-        gapSegments.value = []
-        routeSegments.value = []
-      }
-    } else {
-      routeOptions.value = []
-      activeRouteIndex.value = 0
       routeAlerts.value = []
-      routeAlertsStatusMessage.value = ''
       routeGeometry.value = null
       gapSegments.value = []
       routeSegments.value = []
     }
-
-    if (feasibilityResult.status === 'rejected' || routeResult.status === 'rejected') {
-      const feasibilityError =
-        feasibilityResult.status === 'rejected'
-          ? formatBackendError(feasibilityResult.reason, 'Feasibility analysis failed for the selected points.')
-          : ''
-      const routeError =
-        routeResult.status === 'rejected'
-          ? formatBackendError(routeResult.reason, 'Route generation failed for the selected points.')
-          : ''
-
-      errorMessage.value = [feasibilityError, routeError].filter(Boolean).join(' ')
-    }
+  } catch (error) {
+    result.value = null
+    routeOptions.value = []
+    activeRouteIndex.value = 0
+    routeAlerts.value = []
+    routeAlertsStatusMessage.value = ''
+    routeGeometry.value = null
+    gapSegments.value = []
+    routeSegments.value = []
+    errorMessage.value = formatBackendError(error, 'Route generation failed for the selected points.')
   } finally {
     isAnalysisVisible.value = Boolean(
       result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length,
@@ -622,7 +619,7 @@ const routeOptionCards = computed(() =>
       gapCount,
       distanceLabel: formatDistance(route.distance_km),
       durationLabel: formatDuration(route.duration_min),
-      safetyLabel: formatSafetyScore(route.safety_score),
+      scoreLabel: formatRouteScore(route.score),
       tone: gapCount > 0 ? 'yellow' : 'green',
     }
   }),
@@ -639,7 +636,6 @@ const feasibilityInsights = computed(() =>
 const selectedRouteMetrics = computed(() => ({
   distanceLabel: selectedRoute.value ? formatDistance(selectedRoute.value.distance_km) : '',
   durationLabel: selectedRoute.value ? formatDuration(selectedRoute.value.duration_min) : '',
-  score: selectedRoute.value ? toFiniteNumber(selectedRoute.value.safety_score) : null,
 }))
 
 const warningCards = computed(() =>
@@ -877,7 +873,6 @@ const warningCards = computed(() =>
           <ScorePanel
             v-if="result"
             :result="result"
-            :score="selectedRouteMetrics.score"
             :duration-label="selectedRouteMetrics.durationLabel"
             :distance-label="selectedRouteMetrics.distanceLabel"
             @close="hideAnalysis"
@@ -907,7 +902,7 @@ const warningCards = computed(() =>
                 <span class="route-option-metrics">
                   <strong>{{ route.durationLabel }}</strong>
                   <span>{{ route.distanceLabel }}</span>
-                  <span>{{ route.safetyLabel }}</span>
+                  <span>{{ route.scoreLabel }}</span>
                 </span>
                 <span v-if="route.gapCount" class="route-option-gap">
                   {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}

@@ -549,10 +549,6 @@ export async function reverseMapboxPlace(coordinate) {
   }
 }
 
-export async function evaluateFeasibility(payload = defaultCoordinates) {
-  return postJson('/api/feasibility/evaluate', payload)
-}
-
 export async function recommendRoute(payload = defaultCoordinates) {
   return postJson('/api/routing/recommend', payload)
 }
