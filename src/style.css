@@ -72,7 +72,8 @@ p {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -127,7 +128,8 @@ button.inline-action {
 }
 
 input,
-select {
+select,
+textarea {
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: var(--radius-md);
@@ -141,10 +143,16 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(0, 242, 152, 0.2);
   outline: none;
+}
+
+textarea {
+  min-height: 140px;
+  resize: vertical;
 }
 
 label {
@@ -500,6 +508,22 @@ label {
   width: 100%;
 }
 
+.map-report-menu {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+  padding: 0.35rem;
+  position: absolute;
+  transform: translate(8px, 8px);
+  z-index: 40;
+}
+
+.map-report-menu button {
+  border-radius: 6px;
+  padding: 0.7rem 0.95rem;
+}
+
 .mapbox-token-empty,
 .locating-panel {
   left: 50%;
@@ -748,6 +772,13 @@ label {
   color: var(--danger);
 }
 
+.success-text {
+  color: #0f766e;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .panel-kicker,
 .eyebrow {
   color: var(--text-muted);
@@ -855,11 +886,76 @@ label {
   grid-column: 1 / -1;
 }
 
+.profile-stat-card {
+  min-height: 150px;
+}
+
+.profile-stat-card h3 {
+  font-size: 2.25rem;
+}
+
+.profile-activity-card {
+  grid-column: 1 / -1;
+}
+
 .report-action,
 .report-meta {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.report-location-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.report-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.report-actions-row button {
+  flex: 1 1 180px;
+}
+
+.mono-text {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.my-reports-panel {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.my-report-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.my-report-item {
+  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem;
+}
+
+.my-report-item strong {
+  color: var(--dark);
+  text-transform: capitalize;
+}
+
+.my-report-item span,
+.my-report-item small {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .badge-card {
@@ -964,6 +1060,10 @@ code {
   .page-grid,
   .report-layout,
   .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-location-grid {
     grid-template-columns: 1fr;
   }
 

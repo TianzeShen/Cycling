@@ -55,12 +55,13 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['location-found', 'heatmap-region-hover'])
+const emit = defineEmits(['location-found', 'heatmap-region-hover', 'report-location'])
 
 const mapContainer = ref(null)
 const map = ref(null)
 const mapReady = ref(false)
 const geolocate = ref(null)
+const reportMenu = ref(null)
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
 const MELBOURNE_BOUNDS = [
@@ -135,19 +136,26 @@ function getGapRouteCollection() {
 function getReportCollection() {
   return {
     type: 'FeatureCollection',
-    features: props.reports.map((report, index) =>
-      pointToFeature(
-        report.location || [-37.805 + index * 0.007, 144.955 + index * 0.009],
-        {
-          id: report.id,
-          type: report.type,
-          area: report.area,
-          status: report.status,
-          votes: report.votes,
-          heatWeight: Math.max(0.25, Math.min(1, report.votes / 50)),
-        },
-      ),
-    ),
+    features: props.reports
+      .map((report, index) => {
+        const latitude = Number(report.latitude)
+        const longitude = Number(report.longitude)
+        const location = Number.isFinite(latitude) && Number.isFinite(longitude)
+          ? [latitude, longitude]
+          : report.location || [-37.805 + index * 0.007, 144.955 + index * 0.009]
+        const votes = Number(report.validation_count ?? report.votes ?? 1)
+
+        return pointToFeature(location, {
+          id: report.report_id || report.id,
+          type: report.issue_type || report.type || 'gap',
+          area: report.area || '',
+          status: report.status || 'submitted',
+          description: report.description || '',
+          reportedAt: report.reported_at || '',
+          votes,
+          heatWeight: Math.max(0.25, Math.min(1, votes / 50)),
+        })
+      }),
   }
 }
 
@@ -207,6 +215,15 @@ function updateRouteData() {
   setSourceData('route-alternatives', getAlternativeRouteCollection())
   setSourceData('route-main', getMainRouteCollection())
   setSourceData('route-gaps', getGapRouteCollection())
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function updateMarkers() {
@@ -306,7 +323,7 @@ function updateLayerVisibility() {
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
   setLayerVisibility('sa2-heatmap-lines', isHeatmap)
   setLayerVisibility('community-heatmap', isHeatmap)
-  setLayerVisibility('community-circles', isHeatmap)
+  setLayerVisibility('community-circles', true)
 }
 
 function updateLayers() {
@@ -553,6 +570,41 @@ function addMapLayers() {
       'circle-stroke-width': 2,
     },
   })
+
+  map.value.on('click', 'community-circles', (event) => {
+    const feature = event.features?.[0]
+
+    if (!feature) {
+      return
+    }
+
+    const coordinates = feature.geometry.coordinates.slice()
+    const properties = feature.properties || {}
+    const description = escapeHtml(properties.description || 'No description provided.')
+    const reportedAt = properties.reportedAt
+      ? new Date(properties.reportedAt).toLocaleString()
+      : 'Time pending'
+    const reportType = escapeHtml(properties.type || 'gap')
+    const status = escapeHtml(properties.status || 'submitted')
+
+    new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
+      .setLngLat(coordinates)
+      .setHTML(`
+        <strong>${reportType} report</strong>
+        <p>Status: ${status}</p>
+        <p>${description}</p>
+        <p>${escapeHtml(reportedAt)}</p>
+      `)
+      .addTo(map.value)
+  })
+
+  map.value.on('mouseenter', 'community-circles', () => {
+    map.value.getCanvas().style.cursor = 'pointer'
+  })
+
+  map.value.on('mouseleave', 'community-circles', () => {
+    map.value.getCanvas().style.cursor = ''
+  })
 }
 
 function addMapControls() {
@@ -616,6 +668,20 @@ onMounted(() => {
         geolocate.value?.trigger()
       }, 300)
     }
+  })
+
+  map.value.on('contextmenu', (event) => {
+    event.preventDefault()
+    reportMenu.value = {
+      x: event.point.x,
+      y: event.point.y,
+      lat: event.lngLat.lat,
+      lng: event.lngLat.lng,
+    }
+  })
+
+  map.value.on('click', () => {
+    reportMenu.value = null
   })
 })
 
@@ -698,6 +764,22 @@ watch(
 <template>
   <section class="mapbox-shell">
     <div v-if="hasToken" ref="mapContainer" class="mapbox-container"></div>
+
+    <div
+      v-if="reportMenu"
+      class="map-report-menu"
+      :style="{ left: `${reportMenu.x}px`, top: `${reportMenu.y}px` }"
+    >
+      <button
+        type="button"
+        @click.stop="
+          emit('report-location', { latitude: reportMenu.lat, longitude: reportMenu.lng });
+          reportMenu = null
+        "
+      >
+        Report gap here
+      </button>
+    </div>
 
     <div v-if="!hasToken" class="mapbox-token-empty panel">
       <span class="eyebrow">Mapbox token required</span>

@@ -1,5 +1,6 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ridesmart-71t5.onrender.com'
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
+const RIDESMART_USER_ID_KEY = 'ridesmart_user_id'
 
 const defaultCoordinates = {
   start_lat: -37.8136,
@@ -230,6 +231,65 @@ async function postJson(path, body) {
   }
 
   return response.json()
+}
+
+async function getJson(path, params = null) {
+  const query = params ? `?${params.toString()}` : ''
+  const response = await fetch(`${API_BASE_URL}${path}${query}`, {
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`)
+  }
+
+  return response.json()
+}
+
+function createFallbackUuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16)
+    const value = character === 'x' ? random : (random & 0x3) | 0x8
+
+    return value.toString(16)
+  })
+}
+
+export function getRideSmartUserId() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const existingUserId = window.localStorage.getItem(RIDESMART_USER_ID_KEY)
+
+  if (existingUserId) {
+    return existingUserId
+  }
+
+  const userId = window.crypto?.randomUUID ? window.crypto.randomUUID() : createFallbackUuid()
+  window.localStorage.setItem(RIDESMART_USER_ID_KEY, userId)
+
+  return userId
+}
+
+export function createReport({ latitude, longitude, description = '' }) {
+  return postJson('/api/reports', {
+    user_id: getRideSmartUserId(),
+    latitude,
+    longitude,
+    issue_type: 'gap',
+    description,
+  })
+}
+
+export function getMyReports() {
+  const params = new URLSearchParams({
+    user_id: getRideSmartUserId(),
+  })
+
+  return getJson('/api/reports', params)
 }
 
 async function fetchMapboxSearchbox(query, params) {

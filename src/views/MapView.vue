@@ -1,15 +1,19 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import MapboxMap from '../components/map/MapboxMap.vue'
 import RouteCard from '../components/RouteCard.vue'
 import ScorePanel from '../components/ScorePanel.vue'
 import {
   defaultCoordinates,
+  getMyReports,
   getMelbourneSa2Heatmap,
   recommendRoute,
   reverseMapboxPlace,
   searchMapboxPlaces,
 } from '../services/api'
+
+const router = useRouter()
 
 const mapModes = {
   routeInput: 'routeInput',
@@ -52,6 +56,7 @@ const isHeatmapLoading = ref(false)
 const heatmapError = ref('')
 const locationStatus = ref('Locating your current position...')
 const currentLocationLabel = ref('')
+const myReports = ref([])
 
 function riskTone(riskLevel) {
   const normalisedRisk = String(riskLevel || '').toLowerCase()
@@ -553,6 +558,25 @@ function handleLocationFound(location) {
   locationStatus.value = 'Using your current location as the start point.'
 }
 
+async function loadMyReports() {
+  try {
+    const response = await getMyReports()
+    myReports.value = Array.isArray(response.reports) ? response.reports : []
+  } catch (error) {
+    myReports.value = []
+  }
+}
+
+function handleReportLocation(location) {
+  router.push({
+    name: 'report',
+    query: {
+      lat: location.latitude.toFixed(6),
+      lng: location.longitude.toFixed(6),
+    },
+  })
+}
+
 async function useCurrentLocationAsStart() {
   start.value = 'Resolving current address...'
   if (!currentLocationLabel.value) {
@@ -594,6 +618,7 @@ function locateUserOnLoad() {
 
 onMounted(() => {
   locateUserOnLoad()
+  loadMyReports()
   document.addEventListener('pointerdown', handleDocumentPointerDown)
 })
 
@@ -680,9 +705,10 @@ const warningCards = computed(() =>
         :alerts="routeAlerts"
         :start-point="startCoordinate"
         :end-point="endCoordinate"
-        :reports="[]"
+        :reports="myReports"
         @location-found="handleLocationFound"
         @heatmap-region-hover="handleHeatmapRegionHover"
+        @report-location="handleReportLocation"
       />
       <div v-else class="glass-panel locating-panel">
         <h2>Locating...</h2>
