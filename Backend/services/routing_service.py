@@ -49,6 +49,14 @@ ORS_TIMEOUT_SECONDS = float(os.getenv("RIDESMART_ORS_TIMEOUT", "12"))
 USE_ORS_ROUTING = os.getenv("RIDESMART_USE_ORS", "false").lower() == "true"
 logger = logging.getLogger("uvicorn.error")
 ROUTING_DEBUG_SIGNATURE = "routing-signature-2026-04-28-v1"
+ROUTE_ANALYSIS_MAX_POINTS = 35
+GAP_POINT_THRESHOLD_M = 17.5
+MIN_CONSECUTIVE_GAP_HITS = 1
+GAP_SEGMENT_COOLDOWN_M = 80
+
+
+class RoutingGenerationError(Exception):
+    pass
 
 
 def build_route_lookup_result(
@@ -146,6 +154,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     external_start = perf_counter()
     external_route = fetch_external_route_data(request)
     external_routes = external_route["routes"]
+    logger.warning("routing.external_route_count=%d", len(external_routes))
     logger.warning(
         "routing.external_lookup_ms=%.1f", (perf_counter() - external_start) * 1000
     )
@@ -161,21 +170,39 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
 
     if external_routes:
         build_start = perf_counter()
-        try:
-            alerts_start = perf_counter()
-            for route_index, route_data in enumerate(external_routes):
+        alerts_start = perf_counter()
+        for route_index, route_data in enumerate(external_routes):
+            route_build_start = perf_counter()
+            try:
                 route_points = route_data["route_points"]
                 analysis_route_points, source_indices = compress_route_points_with_source_indices(
                     route_points,
-                    max_points=30,
+                    max_points=ROUTE_ANALYSIS_MAX_POINTS,
                 )
-                segments = build_route_segments(analysis_route_points)
+                lane_fetch_start = perf_counter()
+                lane_type_geometries = fetch_lane_type_geometries_near_route(
+                    analysis_route_points
+                )
+                lane_fetch_ms = (perf_counter() - lane_fetch_start) * 1000
+
+                analysis_segments_start = perf_counter()
+                segments = build_route_segments_from_lane_geometries(
+                    analysis_route_points,
+                    lane_type_geometries=lane_type_geometries,
+                )
+                analysis_segments_ms = (perf_counter() - analysis_segments_start) * 1000
+
+                gap_segments_start = perf_counter()
                 option_gap_segments = build_gap_segments_from_analysis_segments(
                     analysis_segments=segments,
                     full_route_points=route_points,
                     source_indices=source_indices,
                 )
+                gap_segments_ms = (perf_counter() - gap_segments_start) * 1000
+
+                alerts_only_start = perf_counter()
                 option_alerts = build_route_alerts(option_gap_segments)
+                alerts_only_ms = (perf_counter() - alerts_only_start) * 1000
                 option = RoutingOption(
                     label=route_label(route_index),
                     provider=route_data["provider"],
@@ -192,15 +219,34 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     ),
                 )
                 route_options.append(option)
+                logger.warning(
+                    "routing.route_option_built index=%d provider=%s points=%d analysis_points=%d segments=%d gap_segments=%d duration_min=%s lane_fetch_ms=%.1f analysis_segments_ms=%.1f gap_segments_ms=%.1f alerts_only_ms=%.1f build_ms=%.1f",
+                    route_index,
+                    route_data["provider"],
+                    len(route_points),
+                    len(analysis_route_points),
+                    len(segments),
+                    len(option_gap_segments),
+                    str(route_data["duration_min"]),
+                    lane_fetch_ms,
+                    analysis_segments_ms,
+                    gap_segments_ms,
+                    alerts_only_ms,
+                    (perf_counter() - route_build_start) * 1000,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "routing.route_option_build_failed index=%d provider=%s error=%s",
+                    route_index,
+                    route_data.get("provider", "unknown"),
+                    exc,
+                )
+
+        if route_options:
             assign_route_option_labels(route_options)
             logger.warning(
-                "routing.alerts_build_ms=%.1f",
+                "routing.route_options_postprocess_ms=%.1f",
                 (perf_counter() - alerts_start) * 1000,
-            )
-        except Exception:
-            route_options = []
-            alerts_status_message = (
-                "Safety alerts are temporarily unavailable. Please review route colors carefully."
             )
 
         if route_options:
@@ -213,11 +259,22 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             duration_min = primary_option.duration_min
         else:
             external_routes = []
+            logger.warning("routing.external_route_processing_yielded_no_options=true")
         logger.warning(
             "routing.segment_build_from_external_ms=%.1f",
             (perf_counter() - build_start) * 1000,
         )
-    if not external_routes:
+
+    external_routing_enabled = (
+        USE_MAPBOX_ROUTING or USE_OSRM_ROUTING or USE_ORS_ROUTING
+    )
+    if external_routing_enabled and not route_options:
+        logger.warning("routing.external_routes_unusable_no_db_fallback=true")
+        raise RoutingGenerationError(
+            "Unable to generate a valid route from the external routing provider."
+        )
+
+    if not external_routes and not external_routing_enabled:
         db_start = perf_counter()
         route_segments = fetch_route_segments_from_db(request)
         logger.warning(
@@ -303,7 +360,7 @@ def build_route_segments_for_request(request: RoutingRequest) -> list[RouteSegme
         route_points = external_routes[0]["route_points"]
         analysis_route_points, _ = compress_route_points_with_source_indices(
             route_points,
-            max_points=30,
+            max_points=ROUTE_ANALYSIS_MAX_POINTS,
         )
         return build_route_segments(analysis_route_points)
 
@@ -336,6 +393,8 @@ def fetch_mapbox_route_data(request: RoutingRequest) -> dict:
     route_data = request_mapbox_route(request, MAPBOX_PROFILE)
     if route_data["routes"]:
         logger.warning("routing.external_provider=mapbox profile=%s", MAPBOX_PROFILE)
+    else:
+        logger.warning("routing.mapbox_returned_no_routes=true")
     return route_data
 
 
@@ -362,7 +421,8 @@ def request_mapbox_route(
     except HTTPError as exc:
         logger.warning("routing.mapbox_http_error_code=%s", exc.code)
         return build_route_lookup_result()
-    except (URLError, TimeoutError, ValueError):
+    except (URLError, TimeoutError, ValueError) as exc:
+        logger.warning("routing.mapbox_request_failed=%s", exc.__class__.__name__)
         return build_route_lookup_result()
 
     routes = payload.get("routes", [])
@@ -405,6 +465,7 @@ def fetch_osrm_route_data(request: RoutingRequest) -> dict:
     if route_data["routes"]:
         logger.warning("routing.external_provider=osrm profile=%s", OSRM_PRIMARY_PROFILE)
         return route_data
+    logger.warning("routing.osrm_primary_returned_no_routes=true")
 
     if OSRM_FALLBACK_PROFILE == OSRM_PRIMARY_PROFILE:
         return build_route_lookup_result()
@@ -412,6 +473,8 @@ def fetch_osrm_route_data(request: RoutingRequest) -> dict:
     route_data = request_osrm_route(request, OSRM_FALLBACK_PROFILE)
     if route_data["routes"]:
         logger.warning("routing.external_provider=osrm profile=%s", OSRM_FALLBACK_PROFILE)
+    else:
+        logger.warning("routing.osrm_fallback_returned_no_routes=true")
     return route_data
 
 
@@ -429,7 +492,8 @@ def request_osrm_route(
     try:
         with urlopen(url, timeout=OSRM_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, TimeoutError, ValueError):
+    except (URLError, TimeoutError, ValueError) as exc:
+        logger.warning("routing.osrm_request_failed=%s", exc.__class__.__name__)
         return build_route_lookup_result()
 
     routes = payload.get("routes", [])
@@ -500,7 +564,8 @@ def request_ors_route(
     except HTTPError as exc:
         logger.warning("routing.ors_http_error_code=%s", exc.code)
         return build_route_lookup_result()
-    except (URLError, TimeoutError, ValueError):
+    except (URLError, TimeoutError, ValueError) as exc:
+        logger.warning("routing.ors_request_failed=%s", exc.__class__.__name__)
         return build_route_lookup_result()
 
     features = payload.get("features", [])
@@ -534,7 +599,7 @@ def request_ors_route(
 
 
 def compress_route_points(
-    route_points: list[tuple[float, float]], max_points: int = 30
+    route_points: list[tuple[float, float]], max_points: int = 50
 ) -> list[tuple[float, float]]:
     compressed_points, _ = compress_route_points_with_source_indices(
         route_points,
@@ -545,7 +610,7 @@ def compress_route_points(
 
 def compress_route_points_with_source_indices(
     route_points: list[tuple[float, float]],
-    max_points: int = 30,
+    max_points: int = 50,
 ) -> tuple[list[tuple[float, float]], list[int]]:
     if len(route_points) <= max_points:
         return route_points, list(range(len(route_points)))
@@ -669,11 +734,29 @@ def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float
 
 def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteSegment]:
     lane_type_geometries = fetch_lane_type_geometries_near_route(route_points)
+    return build_route_segments_from_lane_geometries(
+        route_points,
+        lane_type_geometries=lane_type_geometries,
+    )
+
+
+def build_route_segments_from_lane_geometries(
+    route_points: list[tuple[float, float]],
+    lane_type_geometries: dict[str, list[list[tuple[float, float]]]],
+) -> list[RouteSegment]:
     segments: list[RouteSegment] = []
+    cooldown_remaining_m = 0.0
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        is_gap = detect_gap(index, start, end, lane_type_geometries)
+        segment_length_m = distance_m(start, end)
+        if cooldown_remaining_m > 0:
+            is_gap = False
+            cooldown_remaining_m = max(0.0, cooldown_remaining_m - segment_length_m)
+        else:
+            is_gap = detect_gap(index, start, end, lane_type_geometries)
+            if is_gap:
+                cooldown_remaining_m = GAP_SEGMENT_COOLDOWN_M
         segments.append(
             RouteSegment(
                 coordinates=[
@@ -693,6 +776,8 @@ def build_gap_segments_from_analysis_segments(
     source_indices: list[int],
 ) -> list[RouteSegment]:
     gap_segments: list[RouteSegment] = []
+    if not analysis_segments or len(full_route_points) < 2:
+        return gap_segments
 
     for segment_index, segment in enumerate(analysis_segments):
         if not segment.is_gap:
@@ -714,11 +799,10 @@ def build_gap_segments_from_analysis_segments(
                 coordinates=[
                     [round(point[0], 6), round(point[1], 6)] for point in route_slice
                 ],
-                risk_level=segment.risk_level,
+                risk_level="Red",
                 is_gap=True,
             )
         )
-
     return gap_segments
 
 
@@ -791,6 +875,7 @@ def fetch_lane_type_geometries_near_route(
             ST_AsGeoJSON(cl.geom) AS geom_json
         FROM ridesmart.cycling_lane cl, route_line r
         WHERE cl.lane_type IN ('protected', 'shared_path', 'informal')
+          AND cl.geom && ST_Expand(r.geom, 0.01)
           AND ST_DWithin(cl.geom::geography, r.geom::geography, 20)
     """
 
@@ -838,19 +923,34 @@ def detect_gap(
         return False
 
     sampled_points = sample_segment_points(start, end)
+    consecutive_gap_hits = 0
     for segment_point in sampled_points:
         near_protected = any(
-            polyline_is_near_point(lane_geometry, segment_point, threshold_m=35)
+            polyline_is_near_point(
+                lane_geometry,
+                segment_point,
+                threshold_m=GAP_POINT_THRESHOLD_M,
+            )
             for lane_geometry in protected_lanes
         )
         if not near_protected:
+            consecutive_gap_hits = 0
             continue
 
         if any(
-            polyline_is_near_point(lane_geometry, segment_point, threshold_m=35)
+            polyline_is_near_point(
+                lane_geometry,
+                segment_point,
+                threshold_m=GAP_POINT_THRESHOLD_M,
+            )
             for lane_geometry in informal_lanes
         ):
-            return True
+            consecutive_gap_hits += 1
+            if consecutive_gap_hits >= MIN_CONSECUTIVE_GAP_HITS:
+                return True
+            continue
+
+        consecutive_gap_hits = 0
     return False
 
 
@@ -859,12 +959,14 @@ def sample_segment_points(
 ) -> list[tuple[float, float]]:
     segment_length_m = max(1.0, distance_m(start, end))
     sample_count = max(3, min(25, int(segment_length_m // 20) + 2))
+    if sample_count <= 2:
+        return []
     return [
         (
             start[0] + (end[0] - start[0]) * (index / (sample_count - 1)),
             start[1] + (end[1] - start[1]) * (index / (sample_count - 1)),
         )
-        for index in range(sample_count)
+        for index in range(1, sample_count - 1)
     ]
 
 
@@ -937,7 +1039,13 @@ def build_route_alerts(segments: list[RouteSegment]) -> list[RoutingAlert]:
 
 
 def alert_position_before_segment(coordinates: list[list[float]]) -> list[float]:
-    start, end = coordinates
+    if not coordinates:
+        return [0.0, 0.0]
+    if len(coordinates) == 1:
+        return [round(coordinates[0][0], 6), round(coordinates[0][1], 6)]
+
+    start = coordinates[0]
+    end = coordinates[1]
     return [
         round(start[0] + (end[0] - start[0]) * 0.2, 6),
         round(start[1] + (end[1] - start[1]) * 0.2, 6),
