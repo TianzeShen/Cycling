@@ -16,6 +16,7 @@ try:
         RoutingRequest,
         RoutingResponse,
     )
+    from Backend.services.feasibility_service import evaluate_feasibility_for_route_points
 except ModuleNotFoundError:
     from database import fetch_all, fetch_scalar
     from schemas import (
@@ -25,6 +26,7 @@ except ModuleNotFoundError:
         RoutingRequest,
         RoutingResponse,
     )
+    from services.feasibility_service import evaluate_feasibility_for_route_points
 
 
 OSRM_BASE_URL = os.getenv("RIDESMART_OSRM_URL", "https://router.project-osrm.org")
@@ -118,8 +120,8 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
     safest_index = max(
         remaining_indices,
         key=lambda index: (
-            route_options[index].safety_score
-            if route_options[index].safety_score is not None
+            route_options[index].score
+            if route_options[index].score is not None
             else -1,
             -(
                 route_options[index].duration_min
@@ -167,6 +169,10 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     distance_km = None
     duration_min = None
     alerts_status_message = None
+    score = None
+    is_supported_area = True
+    warning_message = None
+    explanations = []
 
     if external_routes:
         build_start = perf_counter()
@@ -203,6 +209,11 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 alerts_only_start = perf_counter()
                 option_alerts = build_route_alerts(option_gap_segments)
                 alerts_only_ms = (perf_counter() - alerts_only_start) * 1000
+
+                feasibility_start = perf_counter()
+                route_feasibility = evaluate_feasibility_for_route_points(route_points)
+                feasibility_ms = (perf_counter() - feasibility_start) * 1000
+                route_score = route_feasibility.score
                 option = RoutingOption(
                     label=route_label(route_index),
                     provider=route_data["provider"],
@@ -212,15 +223,14 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     alerts=option_alerts,
                     distance_km=calculate_route_distance_km(route_points),
                     duration_min=route_data["duration_min"],
-                    safety_score=calculate_route_safety_score(
-                        segments,
-                        option_gap_segments,
-                        option_alerts,
-                    ),
+                    score=route_score,
+                    is_supported_area=route_feasibility.is_supported_area,
+                    warning_message=route_feasibility.warning_message,
+                    explanations=route_feasibility.explanations,
                 )
                 route_options.append(option)
                 logger.warning(
-                    "routing.route_option_built index=%d provider=%s points=%d analysis_points=%d segments=%d gap_segments=%d duration_min=%s lane_fetch_ms=%.1f analysis_segments_ms=%.1f gap_segments_ms=%.1f alerts_only_ms=%.1f build_ms=%.1f",
+                    "routing.route_option_built index=%d provider=%s points=%d analysis_points=%d segments=%d gap_segments=%d duration_min=%s score=%s lane_fetch_ms=%.1f analysis_segments_ms=%.1f gap_segments_ms=%.1f alerts_only_ms=%.1f feasibility_ms=%.1f build_ms=%.1f",
                     route_index,
                     route_data["provider"],
                     len(route_points),
@@ -228,10 +238,12 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     len(segments),
                     len(option_gap_segments),
                     str(route_data["duration_min"]),
+                    str(route_score),
                     lane_fetch_ms,
                     analysis_segments_ms,
                     gap_segments_ms,
                     alerts_only_ms,
+                    feasibility_ms,
                     (perf_counter() - route_build_start) * 1000,
                 )
             except Exception as exc:
@@ -257,6 +269,10 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             alerts = primary_option.alerts
             distance_km = primary_option.distance_km
             duration_min = primary_option.duration_min
+            score = primary_option.score
+            is_supported_area = primary_option.is_supported_area
+            warning_message = primary_option.warning_message
+            explanations = primary_option.explanations
         else:
             external_routes = []
             logger.warning("routing.external_route_processing_yielded_no_options=true")
@@ -319,11 +335,10 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 alerts=alerts,
                 distance_km=distance_km,
                 duration_min=duration_min,
-                safety_score=calculate_route_safety_score(
-                    route_segments,
-                    gap_segments,
-                    alerts,
-                ),
+                score=None,
+                is_supported_area=True,
+                warning_message=None,
+                explanations=[],
             )
         ]
 
@@ -345,6 +360,10 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         distance_km=distance_km,
         duration_min=duration_min,
         route_options=route_options,
+        score=score,
+        is_supported_area=is_supported_area,
+        warning_message=warning_message,
+        explanations=explanations,
         debug_signature=ROUTING_DEBUG_SIGNATURE,
     )
 

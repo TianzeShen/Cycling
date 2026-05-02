@@ -82,7 +82,10 @@ class RoutingOption(BaseModel):
     alerts: list[RoutingAlert] = Field(default_factory=list)
     distance_km: float | None = None
     duration_min: float | None = None
-    safety_score: int | None = None
+    score: int | None = None
+    is_supported_area: bool = True
+    warning_message: str | None = None
+    explanations: list[FeasibilityExplanation] = Field(default_factory=list)
 
 
 class RoutingResponse(BaseModel):
@@ -94,6 +97,10 @@ class RoutingResponse(BaseModel):
     distance_km: float | None = None
     duration_min: float | None = None
     route_options: list[RoutingOption] = Field(default_factory=list)
+    score: int | None = None
+    is_supported_area: bool = True
+    warning_message: str | None = None
+    explanations: list[FeasibilityExplanation] = Field(default_factory=list)
     debug_signature: str | None = None
 
 
