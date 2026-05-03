@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { createReport, getMyReports, getRideSmartUserId } from '../services/api'
+import { createReport, getMyReports, getRideSmartUserId, reverseMapboxPlace } from '../services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -9,6 +9,8 @@ const router = useRouter()
 const userId = getRideSmartUserId()
 const latitude = ref('')
 const longitude = ref('')
+const locationName = ref('')
+const isResolvingLocation = ref(false)
 const description = ref('')
 const reports = ref([])
 const isSubmitting = ref(false)
@@ -44,6 +46,24 @@ function syncLocationFromQuery() {
 
   if (Number.isFinite(queryLongitude)) {
     longitude.value = String(queryLongitude)
+  }
+}
+
+async function resolveSelectedLocationName() {
+  if (!hasSelectedLocation.value) {
+    locationName.value = ''
+    return
+  }
+
+  isResolvingLocation.value = true
+
+  try {
+    const place = await reverseMapboxPlace([Number(latitude.value), Number(longitude.value)])
+    locationName.value = place?.address || place?.label || 'Selected map location'
+  } catch (error) {
+    locationName.value = 'Selected map location'
+  } finally {
+    isResolvingLocation.value = false
   }
 }
 
@@ -94,6 +114,7 @@ function openMap() {
 
 onMounted(() => {
   syncLocationFromQuery()
+  resolveSelectedLocationName()
   loadReports()
 })
 </script>
@@ -104,17 +125,6 @@ onMounted(() => {
       <span class="eyebrow">Smart gap reporting</span>
       <h2>Report a cycling gap</h2>
       <p>Right-click a location on the map, then submit a user-reported gap for backend storage.</p>
-
-      <div class="report-location-grid">
-        <label>
-          Latitude
-          <input v-model="latitude" type="number" step="any" readonly />
-        </label>
-        <label>
-          Longitude
-          <input v-model="longitude" type="number" step="any" readonly />
-        </label>
-      </div>
 
       <label>
         Issue type
@@ -147,6 +157,8 @@ onMounted(() => {
       <article class="panel">
         <span class="pill">Auto-filled</span>
         <h3>Selected location</h3>
+        <p v-if="isResolvingLocation">Resolving place name...</p>
+        <p v-else>{{ locationName || 'Place name unavailable' }}</p>
         <p>{{ formatCoordinate(latitude) }}, {{ formatCoordinate(longitude) }}</p>
       </article>
 

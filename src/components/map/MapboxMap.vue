@@ -323,7 +323,36 @@ function updateLayerVisibility() {
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
   setLayerVisibility('sa2-heatmap-lines', isHeatmap)
   setLayerVisibility('community-heatmap', isHeatmap)
+  setLayerVisibility('community-report-halo', true)
   setLayerVisibility('community-circles', true)
+  setLayerVisibility('community-report-icons', true)
+}
+
+function showReportPopup(event) {
+  const feature = event.features?.[0]
+
+  if (!feature) {
+    return
+  }
+
+  const coordinates = feature.geometry.coordinates.slice()
+  const properties = feature.properties || {}
+  const description = escapeHtml(properties.description || 'No description provided.')
+  const reportedAt = properties.reportedAt
+    ? new Date(properties.reportedAt).toLocaleString()
+    : 'Time pending'
+  const reportType = escapeHtml(properties.type || 'gap')
+  const status = escapeHtml(properties.status || 'submitted')
+
+  new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
+    .setLngLat(coordinates)
+    .setHTML(`
+      <strong>${reportType} report</strong>
+      <p>Status: ${status}</p>
+      <p>${description}</p>
+      <p>${escapeHtml(reportedAt)}</p>
+    `)
+    .addTo(map.value)
 }
 
 function updateLayers() {
@@ -563,39 +592,80 @@ function addMapLayers() {
     type: 'circle',
     source: 'community-reports',
     paint: {
-      'circle-radius': 7,
-      'circle-color': '#e85d5d',
-      'circle-opacity': 0.8,
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        10,
+        9,
+        15,
+        13,
+      ],
+      'circle-color': '#ef4444',
+      'circle-opacity': 0.94,
       'circle-stroke-color': '#ffffff',
-      'circle-stroke-width': 2,
+      'circle-stroke-width': 3,
+      'circle-blur': 0,
     },
   })
 
-  map.value.on('click', 'community-circles', (event) => {
-    const feature = event.features?.[0]
+  map.value.addLayer({
+    id: 'community-report-halo',
+    type: 'circle',
+    source: 'community-reports',
+    paint: {
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        10,
+        17,
+        15,
+        24,
+      ],
+      'circle-color': '#ef4444',
+      'circle-opacity': 0.22,
+      'circle-stroke-color': '#ef4444',
+      'circle-stroke-opacity': 0.36,
+      'circle-stroke-width': 2,
+    },
+  }, 'community-circles')
 
-    if (!feature) {
-      return
-    }
+  map.value.addLayer({
+    id: 'community-report-icons',
+    type: 'symbol',
+    source: 'community-reports',
+    layout: {
+      'text-field': '!',
+      'text-size': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        10,
+        14,
+        15,
+        18,
+      ],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: {
+      'text-color': '#ffffff',
+      'text-halo-color': '#b91c1c',
+      'text-halo-width': 0.5,
+    },
+  })
 
-    const coordinates = feature.geometry.coordinates.slice()
-    const properties = feature.properties || {}
-    const description = escapeHtml(properties.description || 'No description provided.')
-    const reportedAt = properties.reportedAt
-      ? new Date(properties.reportedAt).toLocaleString()
-      : 'Time pending'
-    const reportType = escapeHtml(properties.type || 'gap')
-    const status = escapeHtml(properties.status || 'submitted')
+  map.value.on('click', 'community-report-icons', showReportPopup)
+  map.value.on('click', 'community-circles', showReportPopup)
 
-    new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
-      .setLngLat(coordinates)
-      .setHTML(`
-        <strong>${reportType} report</strong>
-        <p>Status: ${status}</p>
-        <p>${description}</p>
-        <p>${escapeHtml(reportedAt)}</p>
-      `)
-      .addTo(map.value)
+  map.value.on('mouseenter', 'community-report-icons', () => {
+    map.value.getCanvas().style.cursor = 'pointer'
+  })
+
+  map.value.on('mouseleave', 'community-report-icons', () => {
+    map.value.getCanvas().style.cursor = ''
   })
 
   map.value.on('mouseenter', 'community-circles', () => {
