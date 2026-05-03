@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -119,3 +120,48 @@ class MelbourneHeatmapRegion(BaseModel):
 class MelbourneHeatmapResponse(BaseModel):
     regions: list[MelbourneHeatmapRegion] = Field(default_factory=list)
     status_message: str | None = None
+
+
+class ReportCreateRequest(BaseModel):
+    user_id: str = Field(..., description="Stable client-generated UUID stored in localStorage.")
+    latitude: float = Field(..., description="Reported gap latitude in WGS84.")
+    longitude: float = Field(..., description="Reported gap longitude in WGS84.")
+    issue_type: str = Field(default="gap", description="Issue type. Current frontend should send `gap`.")
+    description: str | None = Field(default=None, description="Optional user-supplied report details.")
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("user_id must not be empty.")
+        return value
+
+    @field_validator("latitude")
+    @classmethod
+    def validate_report_latitude(cls, value: float) -> float:
+        if not -90 <= value <= 90:
+            raise ValueError("Latitude must be between -90 and 90.")
+        return value
+
+    @field_validator("longitude")
+    @classmethod
+    def validate_report_longitude(cls, value: float) -> float:
+        if not -180 <= value <= 180:
+            raise ValueError("Longitude must be between -180 and 180.")
+        return value
+
+
+class ReportResponse(BaseModel):
+    report_id: str
+    user_id: str
+    segment_id: str | None = None
+    issue_type: str
+    status: str
+    latitude: float
+    longitude: float
+    description: str | None = None
+    reported_at: datetime
+
+
+class ReportListResponse(BaseModel):
+    reports: list[ReportResponse] = Field(default_factory=list)

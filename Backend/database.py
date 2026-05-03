@@ -44,6 +44,12 @@ def get_connection() -> Iterator[Connection]:
         yield connection
 
 
+@contextmanager
+def get_transaction_connection() -> Iterator[Connection]:
+    with engine.begin() as connection:
+        yield connection
+
+
 def fetch_one(query: str, params: dict[str, Any] | None = None) -> dict[str, Any] | None:
     with get_connection() as connection:
         row = connection.execute(text(query), params or {}).mappings().first()
