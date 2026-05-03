@@ -18,14 +18,24 @@ except ModuleNotFoundError:
     )
 
 
-REPORT_STATUS_SUBMITTED = "submitted"
+REPORT_STATUS_PENDING = "pending"
 LANE_GAP_TYPE_USER_REPORTED = "user_reported_gap"
+ISSUE_TYPE_MAPPING = {
+    "gap": "no_lane",
+    "no_lane": "no_lane",
+    "broken_lane": "broken_lane",
+    "pothole": "pothole",
+    "debris": "debris",
+    "unsafe_crossing": "unsafe_crossing",
+    "other": "other",
+}
 
 
 def create_report(payload: ReportCreateRequest) -> ReportResponse:
     report_id = str(uuid4())
     gap_id = str(uuid4())
     segment_id = find_nearest_segment_id(payload.latitude, payload.longitude)
+    stored_issue_type = normalise_issue_type(payload.issue_type)
 
     insert_report_query = """
         INSERT INTO ridesmart.issue_report (
@@ -100,8 +110,8 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
         "gap_id": gap_id,
         "user_id": payload.user_id,
         "segment_id": segment_id,
-        "issue_type": payload.issue_type,
-        "status": REPORT_STATUS_SUBMITTED,
+        "issue_type": stored_issue_type,
+        "status": REPORT_STATUS_PENDING,
         "latitude": payload.latitude,
         "longitude": payload.longitude,
         "description": payload.description,
@@ -161,3 +171,8 @@ def find_nearest_segment_id(latitude: float, longitude: float) -> str | None:
         },
     )
     return None if row is None else row["segment_id"]
+
+
+def normalise_issue_type(issue_type: str) -> str:
+    key = issue_type.strip().lower()
+    return ISSUE_TYPE_MAPPING.get(key, "other")
