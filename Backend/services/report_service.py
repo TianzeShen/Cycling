@@ -120,6 +120,7 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
     }
 
     with get_transaction_connection() as connection:
+        ensure_local_uuid_user_exists(connection, payload.user_id)
         report_row = (
             connection.execute(text(insert_report_query), params).mappings().first()
         )
@@ -176,3 +177,39 @@ def find_nearest_segment_id(latitude: float, longitude: float) -> str | None:
 def normalise_issue_type(issue_type: str) -> str:
     key = issue_type.strip().lower()
     return ISSUE_TYPE_MAPPING.get(key, "other")
+
+
+def ensure_local_uuid_user_exists(connection, user_id: str) -> None:
+    exists_query = """
+        SELECT 1
+        FROM ridesmart.app_user
+        WHERE user_id = CAST(:user_id AS uuid)
+        LIMIT 1
+    """
+    exists = connection.execute(text(exists_query), {"user_id": user_id}).scalar()
+    if exists:
+        return
+
+    insert_query = """
+        INSERT INTO ridesmart.app_user (
+            user_id,
+            full_name,
+            email,
+            password_hash
+        )
+        VALUES (
+            CAST(:user_id AS uuid),
+            :full_name,
+            :email,
+            :password_hash
+        )
+    """
+    connection.execute(
+        text(insert_query),
+        {
+            "user_id": user_id,
+            "full_name": f"Local User {user_id[:8]}",
+            "email": f"local-{user_id}@ridesmart.local",
+            "password_hash": "localstorage-uuid-placeholder",
+        },
+    )
