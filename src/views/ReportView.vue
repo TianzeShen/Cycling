@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createReport, getMyReports, getRideSmartUserId, reverseMapboxPlace } from '../services/api'
 
@@ -17,6 +17,9 @@ const isSubmitting = ref(false)
 const isLoadingReports = ref(false)
 const statusMessage = ref('')
 const errorMessage = ref('')
+const reportMain = ref(null)
+const reportMainHeight = ref(0)
+let reportMainResizeObserver = null
 
 const hasSelectedLocation = computed(() =>
   Number.isFinite(Number(latitude.value)) && Number.isFinite(Number(longitude.value)),
@@ -116,206 +119,122 @@ onMounted(() => {
   syncLocationFromQuery()
   resolveSelectedLocationName()
   loadReports()
+
+  if (reportMain.value && window.ResizeObserver) {
+    reportMainResizeObserver = new ResizeObserver(([entry]) => {
+      reportMainHeight.value = Math.ceil(entry.contentRect.height)
+    })
+    reportMainResizeObserver.observe(reportMain.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  reportMainResizeObserver?.disconnect()
 })
 </script>
 
 <template>
-  <section class="report-view-container">
-    <header class="report-page-header">
-      <span class="eyebrow-dark">Community Intelligence</span>
-      <h1>Report a cycling hazard.</h1>
-      <p>
-        Your local knowledge helps the AI build safer routes. Pinpoint missing lanes, unsafe merges,
-        or obstructions to instantly alert other riders.
-      </p>
-    </header>
+  <section class="rs-report-layout">
+    <div class="rs-report-grid" :style="reportMainHeight ? { '--report-main-height': `${reportMainHeight}px` } : null">
+      <div ref="reportMain" class="rs-report-main">
+        <header class="rs-header-clean">
+          <span class="rs-kicker">Community Intelligence</span>
+          <h1>Report a Hazard</h1>
+          <p>
+            Your local knowledge helps refine our AI routing. Pinpoint missing infrastructure to
+            instantly alert other riders.
+          </p>
+        </header>
 
-    <div class="report-content-grid">
-      <div class="report-form-wrapper">
-        <form class="glass-panel dynamic-report-form" @submit.prevent="submitReport">
-          <div class="form-group locked-group">
-            <label>Issue Type</label>
-            <div class="locked-input-pill">
-              <span class="indicator-dot red"></span>
-              Infrastructure Gap
-              <svg
-                class="lock-icon"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
+        <form class="rs-form-clean" @submit.prevent="submitReport">
+          <section class="rs-location-inline">
+            <div class="rs-meta-header">
+              <h3>Selected Map Location</h3>
+              <span class="rs-status-pulse" :class="{ active: hasSelectedLocation }"></span>
             </div>
-            <small class="helper-text-left">Auto-categorized from the selected map point.</small>
+            <div class="rs-location-display">
+              <div v-if="isResolvingLocation" class="rs-loading-text">Resolving spatial data...</div>
+              <h4 v-else class="rs-location-title">{{ locationName || 'Awaiting map input...' }}</h4>
+              <div class="rs-coord-row">
+                <span class="rs-mono">LAT {{ formatCoordinate(latitude) }}</span>
+                <span class="rs-mono">LNG {{ formatCoordinate(longitude) }}</span>
+              </div>
+            </div>
+          </section>
+
+          <div class="rs-field-group">
+            <label>Auto-detected Type</label>
+            <div class="rs-pseudo-input">
+              <span class="rs-dot error"></span>
+              Infrastructure Gap
+            </div>
           </div>
 
-          <div class="form-group">
-            <label>Description & Context</label>
+          <div class="rs-field-group">
+            <label>Field Notes</label>
             <textarea
               v-model="description"
               maxlength="500"
-              class="premium-textarea"
-              placeholder="Describe the hazard, for example: Bike lane suddenly ends before a heavy traffic merge."
+              class="rs-textarea-clean"
+              placeholder="Provide context... (e.g., 'Bike lane ends abruptly, forced merge with heavy traffic.')"
             ></textarea>
-            <div class="char-counter">{{ description.length }} / 500</div>
+            <div class="rs-char-counter">{{ description.length }} / 500</div>
           </div>
 
-          <div class="form-actions">
-            <button type="button" class="btn-outline map-picker-btn" @click="openMap">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"></path>
-                <circle cx="12" cy="10" r="3"></circle>
-              </svg>
-              {{ hasSelectedLocation ? 'Change Map Location' : 'Choose on Map' }}
+          <div class="rs-form-actions">
+            <button type="button" class="rs-btn-ghost" @click="openMap">
+              {{ hasSelectedLocation ? 'Relocate on Map' : 'Select on Map' }}
             </button>
-
-            <button type="submit" class="btn-primary-glow submit-btn" :disabled="isSubmitting || !hasSelectedLocation">
-              {{ isSubmitting ? 'Syncing to Network...' : 'Broadcast Report' }}
+            <button type="submit" class="rs-btn-solid" :disabled="isSubmitting || !hasSelectedLocation">
+              {{ isSubmitting ? 'Syncing...' : 'Broadcast Report' }}
             </button>
           </div>
 
-          <transition name="fade">
-            <div v-if="statusMessage" class="status-banner success">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
-              {{ statusMessage }}
-            </div>
+          <transition name="rs-fade">
+            <div v-if="statusMessage" class="rs-feedback success">{{ statusMessage }}</div>
           </transition>
-
-          <transition name="fade">
-            <div v-if="errorMessage" class="status-banner error">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-              {{ errorMessage }}
-            </div>
+          <transition name="rs-fade">
+            <div v-if="errorMessage" class="rs-feedback error">{{ errorMessage }}</div>
           </transition>
         </form>
       </div>
 
-      <aside class="report-meta-sidebar">
-        <article class="meta-widget location-widget">
-          <div class="widget-header">
-            <span class="widget-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 10c0 4.99-5.53 10.19-7.4 11.77a1 1 0 0 1-1.2 0C9.53 20.19 4 14.99 4 10a8 8 0 1 1 16 0z"></path>
-                <circle cx="12" cy="10" r="3"></circle>
-              </svg>
-            </span>
-            <h3>Target Coordinates</h3>
-            <span class="status-dot" :class="hasSelectedLocation ? 'active' : 'inactive'"></span>
-          </div>
-          <div class="widget-body">
-            <p v-if="isResolvingLocation" class="resolving-text">Scanning map data...</p>
-            <h4 v-else class="location-name">{{ locationName || 'Awaiting map selection...' }}</h4>
-            <div class="coordinate-display">
-              <div class="coord-box">
-                <span>LAT</span>
-                <strong>{{ formatCoordinate(latitude) }}</strong>
-              </div>
-              <div class="coord-box">
-                <span>LNG</span>
-                <strong>{{ formatCoordinate(longitude) }}</strong>
-              </div>
+      <aside class="rs-report-sidebar">
+        <div class="rs-sidebar-panel">
+          <section class="rs-meta-section">
+            <div class="rs-meta-header">
+              <h3>Reporter Identity</h3>
             </div>
-          </div>
-        </article>
+            <div class="rs-id-display">
+              <span class="rs-mono block">{{ userId }}</span>
+              <span class="rs-tag">Local Device</span>
+            </div>
+          </section>
 
-        <article class="meta-widget user-widget">
-          <div class="widget-header">
-            <span class="widget-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21a8 8 0 0 0-16 0"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-            </span>
-            <h3>Reporter Identity</h3>
-          </div>
-          <div class="widget-body">
-            <p class="mono-id">{{ userId }}</p>
-            <span class="local-tag">Local Device Synced</span>
-          </div>
-        </article>
+          <section class="rs-meta-section rs-history-section">
+            <div class="rs-meta-header">
+              <h3>Contribution Log</h3>
+              <span class="rs-count-badge">{{ reports.length }}</span>
+            </div>
 
-        <article class="meta-widget history-widget">
-          <div class="widget-header">
-            <span class="widget-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M8 2v4"></path>
-                <path d="M16 2v4"></path>
-                <rect width="18" height="18" x="3" y="4" rx="2"></rect>
-                <path d="M8 11h8"></path>
-                <path d="M8 15h5"></path>
-              </svg>
-            </span>
-            <h3>My Contribution Log</h3>
-            <span class="report-badge">{{ reports.length }}</span>
-          </div>
-
-          <div class="widget-body history-body">
-            <p v-if="isLoadingReports" class="loading-text">Fetching secure logs...</p>
-            <div v-else-if="reports.length" class="timeline-container">
-              <div v-for="report in reports" :key="report.report_id" class="timeline-item">
-                <div class="timeline-node"></div>
-                <div class="timeline-content">
-                  <div class="timeline-meta">
-                    <span class="timeline-status">{{ report.status || 'Submitted' }}</span>
-                    <span class="timeline-date">{{ formatReportTime(report.reported_at) }}</span>
+            <div class="rs-history-scroll">
+              <div v-if="isLoadingReports" class="rs-loading-text">Fetching logs...</div>
+              <div v-else-if="reports.length" class="rs-history-list">
+                <div v-for="report in reports" :key="report.report_id" class="rs-history-row">
+                  <div class="rs-row-top">
+                    <span class="rs-status-tag">{{ report.status || 'Submitted' }}</span>
+                    <span class="rs-time-tag">{{ formatReportTime(report.reported_at) }}</span>
                   </div>
-                  <p class="timeline-desc">{{ report.description || 'No additional details provided.' }}</p>
-                  <span class="timeline-gps">
+                  <p class="rs-row-desc">{{ report.description || 'No notes provided.' }}</p>
+                  <span class="rs-row-gps rs-mono">
                     {{ formatCoordinate(report.latitude) }}, {{ formatCoordinate(report.longitude) }}
                   </span>
                 </div>
               </div>
+              <div v-else class="rs-empty-log">No hazards reported yet.</div>
             </div>
-            <div v-else class="empty-state">
-              <p>No hazards reported from this device yet.</p>
-            </div>
-          </div>
-        </article>
+          </section>
+        </div>
       </aside>
     </div>
   </section>

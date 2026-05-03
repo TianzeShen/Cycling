@@ -3717,3 +3717,719 @@ code {
     justify-content: flex-start;
   }
 }
+
+/* Report page: civic tech / utility layout */
+.civic-report-container {
+  background: #ffffff;
+  color: #000000;
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 8rem 2rem 4rem;
+}
+
+.civic-header {
+  border-bottom: 2px solid #000000;
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+}
+
+.civic-header h1 {
+  color: #000000;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  margin-bottom: 0.5rem;
+}
+
+.civic-header p {
+  color: #4b5563;
+  font-size: 1.15rem;
+}
+
+.civic-grid {
+  border: 1px solid #000000;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+}
+
+.civic-form-col {
+  border-right: 1px solid #000000;
+  padding: 3rem;
+}
+
+.civic-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.civic-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.civic-field label,
+.civic-label {
+  color: #000000;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.civic-readonly-input {
+  border-bottom: 1px solid #d1d5db;
+  color: #4b5563;
+  font-weight: 600;
+  padding: 1rem 0;
+}
+
+.civic-textarea {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #000000;
+  border-radius: 0;
+  box-shadow: none;
+  color: #000000;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  min-height: 120px;
+  padding: 1rem 0;
+  resize: vertical;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.civic-textarea:focus {
+  border-bottom: 3px solid #000000;
+  box-shadow: none;
+  outline: none;
+}
+
+.char-count {
+  color: #6b7280;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+  text-align: right;
+}
+
+.civic-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.civic-btn-primary,
+.civic-btn-secondary {
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 1.2rem 2rem;
+  text-transform: uppercase;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.civic-btn-primary {
+  background: #000000;
+  border: 1px solid #000000;
+  color: #ffffff;
+  flex: 1;
+}
+
+.civic-btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  color: #000000;
+  transform: none;
+}
+
+.civic-btn-primary:disabled {
+  background: #e5e7eb;
+  border-color: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.civic-btn-secondary {
+  background: #ffffff;
+  border: 1px solid #000000;
+  color: #000000;
+}
+
+.civic-btn-secondary:hover {
+  background: #f3f4f6;
+  transform: none;
+}
+
+.civic-msg {
+  border: 1px solid currentColor;
+  font-weight: 700;
+  padding: 1rem;
+}
+
+.civic-msg.success {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.civic-msg.error {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.civic-data-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.civic-data-block {
+  border-bottom: 1px solid #000000;
+  padding: 2.5rem 3rem;
+}
+
+.civic-data-block:last-child {
+  border-bottom: none;
+}
+
+.civic-value-large {
+  color: #000000;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1rem 0 0.5rem;
+}
+
+.civic-mono {
+  color: #4b5563;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.user-id {
+  margin-top: 0.8rem;
+  word-break: break-all;
+}
+
+.history-block {
+  background: #f8fafc;
+  flex: 1;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.history-item {
+  border-bottom: 1px dashed #cbd5e1;
+  padding-bottom: 1.5rem;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.history-item-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+}
+
+.status-badge {
+  background: #000000;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.history-date {
+  color: #6b7280;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+}
+
+.history-desc {
+  color: #111827;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  margin-bottom: 0.8rem;
+}
+
+.history-gps {
+  background: #e2e8f0;
+  color: #0f172a;
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .civic-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .civic-form-col {
+    border-bottom: 1px solid #000000;
+    border-right: none;
+    padding: 2rem;
+  }
+
+  .civic-data-block {
+    padding: 2rem;
+  }
+}
+
+@media (max-width: 620px) {
+  .civic-report-container {
+    padding: 6rem 1rem 2rem;
+  }
+
+  .civic-actions,
+  .history-item-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .civic-btn-primary,
+  .civic-btn-secondary {
+    width: 100%;
+  }
+}
+
+/* Report page: modern SaaS clean UI */
+.rs-report-layout {
+  background: var(--bg-color);
+  margin: 0 auto;
+  max-width: 1300px;
+  padding: 7rem 2rem 4rem;
+}
+
+.rs-report-grid {
+  align-items: start;
+  display: grid;
+  gap: 5rem;
+  grid-template-columns: minmax(0, 1fr) 400px;
+}
+
+.rs-report-sidebar {
+  display: flex;
+  min-height: 0;
+}
+
+.rs-header-clean {
+  margin-bottom: 3.5rem;
+}
+
+.rs-kicker {
+  color: var(--primary-hover);
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.8rem;
+  text-transform: uppercase;
+}
+
+.rs-header-clean h1 {
+  color: var(--dark);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.5rem, 4vw, 3.5rem);
+  letter-spacing: 0;
+  margin-bottom: 0.8rem;
+}
+
+.rs-header-clean p {
+  color: #64748b;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  max-width: 600px;
+}
+
+.rs-form-clean {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  max-width: 650px;
+}
+
+.rs-location-inline {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  padding-bottom: 1.4rem;
+}
+
+.rs-location-inline .rs-meta-header {
+  margin-bottom: 1rem;
+}
+
+.rs-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  position: relative;
+}
+
+.rs-field-group label {
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.rs-pseudo-input {
+  align-items: center;
+  background: transparent;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  color: var(--text-main);
+  display: flex;
+  font-weight: 700;
+  padding: 1rem 0;
+}
+
+.rs-dot {
+  border-radius: 999px;
+  height: 8px;
+  margin-right: 12px;
+  width: 8px;
+}
+
+.rs-dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.rs-textarea-clean {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 0;
+  color: var(--dark);
+  font-size: 1.1rem;
+  line-height: 1.6;
+  min-height: 150px;
+  padding: 1rem 0;
+  resize: vertical;
+  transition: border-color 0.3s;
+  width: 100%;
+}
+
+.rs-textarea-clean:focus {
+  border-bottom-color: var(--primary);
+  box-shadow: none;
+  outline: none;
+}
+
+.rs-char-counter {
+  bottom: -1.2rem;
+  color: #94a3b8;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  position: absolute;
+  right: 0;
+}
+
+.rs-form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.rs-btn-solid {
+  background: var(--dark);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  flex: 1;
+  font-weight: 800;
+  padding: 1rem;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.rs-btn-solid:hover:not(:disabled) {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+  transform: translateY(-2px);
+}
+
+.rs-btn-solid:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.rs-btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 8px;
+  color: var(--dark);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-weight: 800;
+  padding: 1rem 1.5rem;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.rs-btn-ghost:hover {
+  background: rgba(15, 23, 42, 0.05);
+  transform: translateY(-1px);
+}
+
+.rs-feedback {
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 1rem;
+}
+
+.rs-feedback.success {
+  background: rgba(0, 242, 152, 0.1);
+  color: #059669;
+}
+
+.rs-feedback.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+.rs-fade-enter-active,
+.rs-fade-leave-active {
+  transition: opacity 0.3s;
+}
+
+.rs-fade-enter-from,
+.rs-fade-leave-to {
+  opacity: 0;
+}
+
+.rs-sidebar-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  max-height: var(--report-main-height);
+  min-height: 0;
+  overflow: hidden;
+  padding: 2.5rem;
+  position: sticky;
+  top: 100px;
+  width: 100%;
+}
+
+.rs-meta-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rs-meta-header {
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 0.5rem;
+}
+
+.rs-meta-header h3 {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 900;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.rs-status-pulse {
+  background: #cbd5e1;
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.rs-status-pulse.active {
+  animation: rsPulse 2s infinite;
+  background: var(--primary);
+}
+
+@keyframes rsPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 242, 152, 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 6px rgba(0, 242, 152, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 242, 152, 0);
+  }
+}
+
+.rs-location-title {
+  color: var(--dark);
+  font-size: 1.1rem;
+  line-height: 1.4;
+  margin: 0 0 0.5rem;
+}
+
+.rs-coord-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.rs-mono {
+  color: #64748b;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+}
+
+.rs-mono.block {
+  display: block;
+  margin-bottom: 0.5rem;
+  word-break: break-all;
+}
+
+.rs-tag {
+  background: #f1f5f9;
+  border-radius: 6px;
+  color: #475569;
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 900;
+  padding: 0.2rem 0.6rem;
+  text-transform: uppercase;
+}
+
+.rs-count-badge {
+  background: #e2e8f0;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 900;
+  padding: 0.1rem 0.5rem;
+}
+
+.rs-history-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rs-history-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.rs-history-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rs-history-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.rs-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rs-history-row {
+  border-bottom: 1px dashed #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 1.5rem;
+}
+
+.rs-history-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.rs-row-top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.rs-status-tag {
+  color: var(--primary-hover);
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rs-time-tag {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.rs-row-desc {
+  color: var(--dark);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.rs-row-gps,
+.rs-empty-log,
+.rs-loading-text {
+  color: #94a3b8;
+}
+
+@media (max-width: 1024px) {
+  .rs-report-grid {
+    gap: 3rem;
+    grid-template-columns: 1fr;
+  }
+
+  .rs-sidebar-panel {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .rs-report-layout {
+    padding: 5rem 1rem 2rem;
+  }
+
+  .rs-form-actions,
+  .rs-row-top {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rs-btn-ghost,
+  .rs-btn-solid {
+    width: 100%;
+  }
+
+  .rs-sidebar-panel {
+    padding: 1.4rem;
+  }
+}
