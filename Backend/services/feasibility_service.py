@@ -559,7 +559,9 @@ def build_warning_message(
     if features["gap_count"] >= 3:
         return "Multiple cycling lane gaps were detected on this route."
     if features["high_crash_segment_count"] >= 2:
-        return "This route includes several road segments with elevated crash history."
+        return "Several parts of this route pass through roads with elevated crash history."
+    if features["high_crash_segment_count"] == 1:
+        return "Part of this route passes through a road with elevated crash history."
     if features["avg_speed_limit"] is not None and features["avg_speed_limit"] >= 70:
         return "High-speed road conditions may reduce cycling safety on this route."
     if score < 50:
