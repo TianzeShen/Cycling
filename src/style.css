@@ -4433,3 +4433,61 @@ code {
     padding: 1.4rem;
   }
 }
+
+/* Mobile map panel stacking fixes */
+@media (max-width: 620px) {
+  .map-side-panel {
+    bottom: 5.5rem;
+    left: 0.75rem;
+    max-height: min(58vh, 460px);
+    overflow-y: auto;
+    right: 0.75rem;
+    top: auto;
+    width: auto;
+  }
+
+  .compact-planner {
+    gap: 0.85rem;
+    padding: 1rem;
+    position: static;
+    z-index: auto;
+  }
+
+  .planner-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .planner-header p {
+    font-size: 0.82rem;
+  }
+
+  .route-inputs-group {
+    border-radius: 12px;
+    padding: 0.35rem;
+  }
+
+  .route-connector {
+    padding: 0.75rem 0.55rem;
+  }
+
+  .input-wrapper input {
+    font-size: 0.9rem;
+    padding: 0.68rem 0.35rem;
+  }
+
+  .glow-btn {
+    font-size: 0.92rem;
+    padding: 0.8rem;
+  }
+
+  .analysis-stack {
+    max-height: none;
+    overflow: visible;
+    position: static;
+    z-index: auto;
+  }
+
+  .score-panel-vibrant {
+    margin-top: 0.75rem;
+  }
+}
