@@ -1,52 +1,142 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { getMyReports, getRideSmartUserId } from '../services/api'
+import { RouterLink } from 'vue-router'
+import { deleteReport, getMyReports, getRideSmartUserId, updateReport } from '../services/api'
 
 const userId = getRideSmartUserId()
 const reports = ref([])
 const isLoading = ref(false)
 const errorMessage = ref('')
+const actionMessage = ref('')
+const editingReportId = ref('')
+const editingDescription = ref('')
+const savingReportId = ref('')
+const deletingReportId = ref('')
+
+const badgeCatalog = [
+  {
+    id: 'first-report',
+    name: 'First Report',
+    detail: 'Submit your first cycling gap report.',
+    thresholdLabel: '1 report',
+    requirement: (stats) => stats.submittedReports >= 1,
+    progress: (stats) => Math.min(stats.submittedReports / 1, 1),
+  },
+  {
+    id: 'gap-spotter',
+    name: 'Gap Spotter',
+    detail: 'Submit 5 cycling gap reports from this device.',
+    thresholdLabel: '5 reports',
+    requirement: (stats) => stats.submittedReports >= 5,
+    progress: (stats) => Math.min(stats.submittedReports / 5, 1),
+  },
+  {
+    id: 'Safety Builder',
+    name: 'Safety Builder',
+    detail: 'Have at least one report validated by the community.',
+    thresholdLabel: '1 validation',
+    requirement: (stats) => stats.validatedReports >= 1,
+    progress: (stats) => Math.min(stats.validatedReports / 1, 1),
+  },
+  {
+    id: 'local-guide',
+    name: 'Local Guide',
+    detail: 'Reach 100 safety points through reports and validation.',
+    thresholdLabel: '100 points',
+    requirement: (stats) => stats.safetyPoints >= 100,
+    progress: (stats) => Math.min(stats.safetyPoints / 100, 1),
+  },
+]
+
+function normaliseStatus(status) {
+  return String(status || 'submitted').toLowerCase()
+}
 
 const submittedReports = computed(() => reports.value.length)
+
 const validatedReports = computed(
-  () => reports.value.filter((report) => String(report.status || '').toLowerCase() === 'validated').length,
+  () => reports.value.filter((report) => normaliseStatus(report.status) === 'validated').length,
 )
-const safetyPoints = computed(() => submittedReports.value * 10 + validatedReports.value * 15)
-const routesImproved = computed(() => validatedReports.value)
 
-const earnedBadges = computed(() => {
-  const badges = []
+const pendingReports = computed(
+  () => reports.value.filter((report) => ['submitted', 'pending', 'pending sync'].includes(normaliseStatus(report.status))).length,
+)
 
-  if (submittedReports.value >= 1) {
-    badges.push({
-      name: 'First Report',
-      detail: 'Submitted your first cycling gap report',
-    })
-  }
+const resolvedReports = computed(
+  () => reports.value.filter((report) => normaliseStatus(report.status) === 'resolved').length,
+)
 
-  if (submittedReports.value >= 5) {
-    badges.push({
-      name: 'Gap Spotter',
-      detail: 'Submitted 5 user-reported cycling gaps',
-    })
-  }
+const safetyPoints = computed(() =>
+  reports.value.reduce((total, report) => {
+    const status = normaliseStatus(report.status)
+    const basePoints = 10
+    const validationBonus = status === 'validated' || status === 'resolved' ? 15 : 0
+    const impactBonus = status === 'resolved' ? 20 : 0
 
-  if (validatedReports.value >= 1) {
-    badges.push({
-      name: 'Safety Builder',
-      detail: 'Had a report validated by the community',
-    })
-  }
+    return total + basePoints + validationBonus + impactBonus
+  }, 0),
+)
 
-  return badges.length
-    ? badges
-    : [
-        {
-          name: 'Ready Rider',
-          detail: 'Submit your first map report to start earning badges',
-        },
-      ]
-})
+const routesImproved = computed(() => validatedReports.value + resolvedReports.value)
+
+const stats = computed(() => ({
+  submittedReports: submittedReports.value,
+  validatedReports: validatedReports.value,
+  resolvedReports: resolvedReports.value,
+  safetyPoints: safetyPoints.value,
+}))
+
+const earnedBadges = computed(() =>
+  badgeCatalog.map((badge) => {
+    const progress = badge.progress(stats.value)
+
+    return {
+      ...badge,
+      earned: badge.requirement(stats.value),
+      progress,
+      progressPercent: Math.round(progress * 100),
+    }
+  }),
+)
+
+const earnedBadgeCount = computed(() => earnedBadges.value.filter((badge) => badge.earned).length)
+
+const nextBadge = computed(() => earnedBadges.value.find((badge) => !badge.earned) || null)
+
+const impactSummary = computed(() => [
+  {
+    label: 'Reports submitted',
+    value: submittedReports.value,
+    detail: 'Infrastructure issues contributed from this browser.',
+  },
+  {
+    label: 'Validations received',
+    value: validatedReports.value,
+    detail: 'Reports confirmed by backend/community status.',
+  },
+  {
+    label: 'Routes improved',
+    value: routesImproved.value,
+    detail: 'Validated or resolved reports that can inform safer routing.',
+  },
+  {
+    label: 'Badges earned',
+    value: `${earnedBadgeCount.value}/${badgeCatalog.length}`,
+    detail: 'Recognition milestones unlocked by contribution activity.',
+  },
+])
+
+const statusBreakdown = computed(() => [
+  { label: 'Pending', value: pendingReports.value, tone: 'pending' },
+  { label: 'Validated', value: validatedReports.value, tone: 'validated' },
+  { label: 'Resolved', value: resolvedReports.value, tone: 'resolved' },
+])
+
+const recentReports = computed(() =>
+  [...reports.value]
+    .sort((left, right) => new Date(right.reported_at || 0) - new Date(left.reported_at || 0))
+    .slice(0, 6),
+)
 
 function formatReportTime(value) {
   if (!value) {
@@ -56,9 +146,16 @@ function formatReportTime(value) {
   return new Date(value).toLocaleString()
 }
 
+function formatCoordinate(value) {
+  const number = Number(value)
+
+  return Number.isFinite(number) ? number.toFixed(6) : 'N/A'
+}
+
 async function loadProfileReports() {
   isLoading.value = true
   errorMessage.value = ''
+  actionMessage.value = ''
 
   try {
     const response = await getMyReports()
@@ -71,59 +168,232 @@ async function loadProfileReports() {
   }
 }
 
+function startEditReport(report) {
+  editingReportId.value = report.report_id
+  editingDescription.value = report.description || ''
+  errorMessage.value = ''
+  actionMessage.value = ''
+}
+
+function cancelEditReport() {
+  editingReportId.value = ''
+  editingDescription.value = ''
+}
+
+async function saveReportEdit(report) {
+  savingReportId.value = report.report_id
+  errorMessage.value = ''
+  actionMessage.value = ''
+
+  try {
+    const updatedReport = await updateReport(report.report_id, {
+      description: editingDescription.value.trim(),
+    })
+
+    reports.value = reports.value.map((item) =>
+      item.report_id === report.report_id
+        ? {
+            ...item,
+            ...updatedReport,
+            description: updatedReport?.description ?? editingDescription.value.trim(),
+          }
+        : item,
+    )
+    actionMessage.value = 'Report updated successfully.'
+    cancelEditReport()
+  } catch (error) {
+    errorMessage.value = 'Unable to update this report right now.'
+  } finally {
+    savingReportId.value = ''
+  }
+}
+
+async function removeReport(report) {
+  const shouldDelete = window.confirm('Delete this submitted report? This action cannot be undone.')
+
+  if (!shouldDelete) {
+    return
+  }
+
+  deletingReportId.value = report.report_id
+  errorMessage.value = ''
+  actionMessage.value = ''
+
+  try {
+    await deleteReport(report.report_id)
+    reports.value = reports.value.filter((item) => item.report_id !== report.report_id)
+    actionMessage.value = 'Report deleted successfully.'
+  } catch (error) {
+    errorMessage.value = 'Unable to delete this report right now.'
+  } finally {
+    deletingReportId.value = ''
+  }
+}
+
 onMounted(loadProfileReports)
 </script>
 
 <template>
-  <section class="profile-grid">
-    <article class="panel profile-summary">
-      <span class="eyebrow">Contribution impact</span>
-      <h2>{{ safetyPoints }} safety points</h2>
-      <p>
-        {{ submittedReports }} reports submitted - {{ validatedReports }} validations received -
-        {{ routesImproved }} routes improved
-      </p>
-      <p class="mono-text">Local user ID: {{ userId }}</p>
-    </article>
-
-    <article class="panel profile-stat-card">
-      <span class="pill">Reports</span>
-      <h3>{{ submittedReports }}</h3>
-      <p>Gap reports submitted from this browser.</p>
-    </article>
-
-    <article class="panel profile-stat-card">
-      <span class="pill">Validated</span>
-      <h3>{{ validatedReports }}</h3>
-      <p>Reports marked as validated by backend/community status.</p>
-    </article>
-
-    <article class="panel profile-stat-card">
-      <span class="pill">Points</span>
-      <h3>{{ safetyPoints }}</h3>
-      <p>Local reward score generated from report activity.</p>
-    </article>
-
-    <article v-for="badge in earnedBadges" :key="badge.name" class="panel badge-card">
-      <span class="badge-icon">{{ badge.name.charAt(0) }}</span>
-      <h3>{{ badge.name }}</h3>
-      <p>{{ badge.detail }}</p>
-    </article>
-
-    <article class="panel profile-activity-card">
-      <span class="eyebrow">Recent activity</span>
-      <h3>My submitted reports</h3>
-      <p v-if="isLoading">Loading activity...</p>
-      <p v-else-if="errorMessage" class="status-text">{{ errorMessage }}</p>
-      <div v-else-if="reports.length" class="my-report-list">
-        <article v-for="report in reports.slice(0, 5)" :key="report.report_id" class="my-report-item">
-          <strong>{{ report.status || 'submitted' }}</strong>
-          <span>{{ Number(report.latitude).toFixed(6) }}, {{ Number(report.longitude).toFixed(6) }}</span>
-          <p>{{ report.description || 'No description provided.' }}</p>
-          <small>{{ formatReportTime(report.reported_at) }}</small>
-        </article>
+  <section class="profile-view-container">
+    <header class="profile-hero-panel">
+      <div>
+        <span class="eyebrow-dark">Reward & Engagement System</span>
+        <h1>{{ safetyPoints }} safety points</h1>
+        <p>
+          {{ submittedReports }} reports submitted - {{ validatedReports }} validations received -
+          {{ routesImproved }} routes improved
+        </p>
+        <p class="profile-user-id">Local user ID: {{ userId }}</p>
       </div>
-      <p v-else>No report activity yet.</p>
-    </article>
+
+      <div class="profile-hero-actions">
+        <RouterLink class="profile-action-link primary" to="/map">Report from map</RouterLink>
+        <RouterLink class="profile-action-link" to="/report">View report log</RouterLink>
+      </div>
+    </header>
+
+    <section class="profile-impact-grid" aria-label="Contribution impact">
+      <article v-for="item in impactSummary" :key="item.label" class="profile-impact-card">
+        <span>{{ item.label }}</span>
+        <strong>{{ item.value }}</strong>
+        <p>{{ item.detail }}</p>
+      </article>
+    </section>
+
+    <section class="profile-content-grid">
+      <article class="profile-panel profile-progress-panel">
+        <div class="profile-panel-header">
+          <div>
+            <span class="panel-kicker">Next milestone</span>
+            <h2>{{ nextBadge ? nextBadge.name : 'All badges earned' }}</h2>
+          </div>
+          <span class="profile-pill">{{ earnedBadgeCount }} earned</span>
+        </div>
+
+        <template v-if="nextBadge">
+          <p>{{ nextBadge.detail }}</p>
+          <div class="profile-progress-track" aria-label="Next badge progress">
+            <span :style="{ width: `${nextBadge.progressPercent}%` }"></span>
+          </div>
+          <p class="profile-progress-copy">{{ nextBadge.progressPercent }}% toward {{ nextBadge.thresholdLabel }}</p>
+        </template>
+        <p v-else>Every current reward milestone is unlocked.</p>
+      </article>
+
+      <article class="profile-panel profile-status-panel">
+        <div class="profile-panel-header">
+          <div>
+            <span class="panel-kicker">Report status</span>
+            <h2>Contribution pipeline</h2>
+          </div>
+        </div>
+
+        <div class="profile-status-list">
+          <div v-for="item in statusBreakdown" :key="item.label" class="profile-status-row">
+            <span :class="`profile-status-dot ${item.tone}`"></span>
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="profile-panel profile-badges-panel">
+        <div class="profile-panel-header">
+          <div>
+            <span class="panel-kicker">Badges</span>
+            <h2>Recognition</h2>
+          </div>
+        </div>
+
+        <div class="profile-badge-grid">
+          <article
+            v-for="badge in earnedBadges"
+            :key="badge.id"
+            class="profile-badge-card"
+            :class="{ locked: !badge.earned }"
+          >
+            <span class="profile-badge-icon">{{ badge.name.charAt(0) }}</span>
+            <div>
+              <h3>{{ badge.name }}</h3>
+              <p>{{ badge.detail }}</p>
+              <div class="badge-progress-track">
+                <span :style="{ width: `${badge.progressPercent}%` }"></span>
+              </div>
+              <small>{{ badge.earned ? 'Earned' : `${badge.progressPercent}% complete` }}</small>
+            </div>
+          </article>
+        </div>
+      </article>
+
+      <article class="profile-panel profile-activity-panel">
+        <div class="profile-panel-header">
+          <div>
+            <span class="panel-kicker">Recent activity</span>
+            <h2>My submitted reports</h2>
+          </div>
+          <button type="button" class="profile-refresh-button" :disabled="isLoading" @click="loadProfileReports">
+            {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+          </button>
+        </div>
+
+        <p v-if="actionMessage" class="success-text">{{ actionMessage }}</p>
+        <p v-if="errorMessage" class="status-text">{{ errorMessage }}</p>
+        <p v-else-if="isLoading">Loading activity...</p>
+        <div v-else-if="recentReports.length" class="profile-report-list">
+          <article v-for="report in recentReports" :key="report.report_id" class="profile-report-item">
+            <div class="profile-report-main">
+              <strong>{{ report.status || 'submitted' }}</strong>
+              <template v-if="editingReportId === report.report_id">
+                <textarea
+                  v-model="editingDescription"
+                  class="profile-report-edit-input"
+                  maxlength="500"
+                  placeholder="Update report description"
+                ></textarea>
+                <div class="profile-report-edit-actions">
+                  <button
+                    type="button"
+                    class="profile-small-button primary"
+                    :disabled="savingReportId === report.report_id"
+                    @click="saveReportEdit(report)"
+                  >
+                    {{ savingReportId === report.report_id ? 'Saving...' : 'Save' }}
+                  </button>
+                  <button type="button" class="profile-small-button" @click="cancelEditReport">Cancel</button>
+                </div>
+              </template>
+              <p v-else>{{ report.description || 'No description provided.' }}</p>
+            </div>
+            <div class="profile-report-meta">
+              <span>{{ formatCoordinate(report.latitude) }}, {{ formatCoordinate(report.longitude) }}</span>
+              <small>{{ formatReportTime(report.reported_at) }}</small>
+              <div class="profile-report-row-actions">
+                <button
+                  type="button"
+                  class="profile-small-button"
+                  :disabled="Boolean(editingReportId)"
+                  @click="startEditReport(report)"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  class="profile-small-button danger"
+                  :disabled="deletingReportId === report.report_id"
+                  @click="removeReport(report)"
+                >
+                  {{ deletingReportId === report.report_id ? 'Deleting...' : 'Delete' }}
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div v-else class="profile-empty-state">
+          <h3>No contribution activity yet</h3>
+          <p>Right-click a location on the map to submit your first cycling gap report.</p>
+          <RouterLink class="profile-action-link primary" to="/map">Open map</RouterLink>
+        </div>
+      </article>
+    </section>
   </section>
 </template>

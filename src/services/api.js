@@ -195,8 +195,16 @@ function scoreSuggestionMatch(query, suggestion) {
 }
 
 async function postJson(path, body) {
+  return sendJson('POST', path, body)
+}
+
+async function patchJson(path, body) {
+  return sendJson('PATCH', path, body)
+}
+
+async function sendJson(method, path, body) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -290,6 +298,38 @@ export function getMyReports() {
   })
 
   return getJson('/api/reports', params)
+}
+
+export function updateReport(reportId, { description = '' }) {
+  return patchJson(`/api/reports/${encodeURIComponent(reportId)}`, {
+    user_id: getRideSmartUserId(),
+    issue_type: 'gap',
+    description,
+  })
+}
+
+export async function deleteReport(reportId) {
+  const params = new URLSearchParams({
+    user_id: getRideSmartUserId(),
+  })
+  const response = await fetch(`${API_BASE_URL}/api/reports/${encodeURIComponent(reportId)}?${params.toString()}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`)
+  }
+
+  if (response.status === 204) {
+    return null
+  }
+
+  const text = await response.text()
+
+  return text ? JSON.parse(text) : null
 }
 
 async function fetchMapboxSearchbox(query, params) {
