@@ -98,9 +98,8 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
         route_options[0].label = "Recommended"
         return
 
-    remaining_indices = list(range(len(route_options)))
     fastest_index = min(
-        remaining_indices,
+        range(len(route_options)),
         key=lambda index: (
             route_options[index].duration_min
             if route_options[index].duration_min is not None
@@ -111,14 +110,9 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
             index,
         ),
     )
-    route_options[fastest_index].label = "Fastest"
-    remaining_indices.remove(fastest_index)
-
-    if not remaining_indices:
-        return
 
     safest_index = max(
-        remaining_indices,
+        range(len(route_options)),
         key=lambda index: (
             route_options[index].score
             if route_options[index].score is not None
@@ -135,12 +129,20 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
             ),
         ),
     )
-    route_options[safest_index].label = "Safest"
-    remaining_indices.remove(safest_index)
-
-    if not remaining_indices:
+    if fastest_index == safest_index:
+        route_options[fastest_index].label = "Safest & Fastest"
+        for index in range(len(route_options)):
+            if index != fastest_index:
+                route_options[index].label = "Not Recommended"
         return
 
+    route_options[fastest_index].label = "Fastest"
+    route_options[safest_index].label = "Safest"
+
+    remaining_indices = [
+        index for index in range(len(route_options))
+        if index not in {fastest_index, safest_index}
+    ]
     if len(remaining_indices) == 1:
         route_options[remaining_indices[0]].label = "Balanced"
         return

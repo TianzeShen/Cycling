@@ -8,21 +8,22 @@ INFRA_QUALITY = {
     "informal": 0.15,
 }
 
-LANE_WEIGHT = 0.30
+LANE_WEIGHT = 0.35
 AADT_WEIGHT = 0.25
 SPEED_WEIGHT = 0.20
-DISTANCE_WEIGHT = 0.25
+DISTANCE_WEIGHT = 0.20
+BASE_SCORE_OFFSET = 12.0
 
 GAP_PENALTY_BY_COUNT = {
     0: 0,
-    1: 12,
-    2: 20,
-    3: 27,
-    4: 33,
+    1: 8,
+    2: 14,
+    3: 20,
+    4: 25,
 }
-MAX_GAP_PENALTY = 38
+MAX_GAP_PENALTY = 30
 HIGH_CRASH_SEGMENT_THRESHOLD = 30
-MAX_CRASH_PENALTY = 30
+MAX_CRASH_PENALTY = 15
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
@@ -52,7 +53,7 @@ def gap_penalty(gap_count: int) -> int:
 
 
 def crash_penalty(high_crash_segment_count: int) -> int:
-    return min(max(0, 5 * int(high_crash_segment_count)), MAX_CRASH_PENALTY)
+    return min(max(0, 3 * int(high_crash_segment_count)), MAX_CRASH_PENALTY)
 
 
 def compute_safety_score(
@@ -74,7 +75,7 @@ def compute_safety_score(
         + (SPEED_WEIGHT * speed_score)
         + (DISTANCE_WEIGHT * distance_score)
     )
-    base_score = round(composite * 100, 1)
+    base_score = round(clamp((composite * 100) + BASE_SCORE_OFFSET, 0.0, 100.0), 1)
 
     applied_gap_penalty = gap_penalty(gap_count)
     applied_crash_penalty = crash_penalty(high_crash_segment_count)
