@@ -181,6 +181,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             route_build_start = perf_counter()
             try:
                 route_points = route_data["route_points"]
+                route_distance_km = calculate_route_distance_km(route_points)
                 analysis_route_points, source_indices = compress_route_points_with_source_indices(
                     route_points,
                     max_points=ROUTE_ANALYSIS_MAX_POINTS,
@@ -211,7 +212,12 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 alerts_only_ms = (perf_counter() - alerts_only_start) * 1000
 
                 feasibility_start = perf_counter()
-                route_feasibility = evaluate_feasibility_for_route_points(route_points)
+                route_feasibility = evaluate_feasibility_for_route_points(
+                    route_points,
+                    distance_km_override=route_distance_km,
+                    gap_count_override=len(option_gap_segments),
+                    context_route_points=analysis_route_points,
+                )
                 feasibility_ms = (perf_counter() - feasibility_start) * 1000
                 route_score = route_feasibility.score
                 option = RoutingOption(
@@ -221,7 +227,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     route_segments=segments,
                     gap_segments=option_gap_segments,
                     alerts=option_alerts,
-                    distance_km=calculate_route_distance_km(route_points),
+                    distance_km=route_distance_km,
                     duration_min=route_data["duration_min"],
                     score=route_score,
                     is_supported_area=route_feasibility.is_supported_area,

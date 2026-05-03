@@ -9,9 +9,7 @@ try:
         FeasibilityResponse,
     )
     from Backend.services.ridesmart_ai_adapter import (
-        compute_feasibility_score,
-        detect_route_risk,
-        generate_explanations,
+        compute_safety_score,
     )
 except ModuleNotFoundError:
     from database import fetch_one, fetch_scalar
@@ -21,9 +19,7 @@ except ModuleNotFoundError:
         FeasibilityResponse,
     )
     from services.ridesmart_ai_adapter import (
-        compute_feasibility_score,
-        detect_route_risk,
-        generate_explanations,
+        compute_safety_score,
     )
 
 
@@ -38,28 +34,37 @@ UNSUPPORTED_AREA_MESSAGE = (
     "Selected coordinates are outside the currently supported Melbourne area."
 )
 MELBOURNE_CBD = (-37.8136, 144.9631)
+HIGH_CRASH_SEGMENT_THRESHOLD = 30
+FEASIBILITY_CONTEXT_MAX_POINTS = 60
+LANE_TYPE_SCORES = {
+    "protected": 1.0,
+    "shared_path": 0.9,
+    "painted": 0.45,
+    "informal": 0.15,
+}
 
 
 class RouteContext(TypedDict):
     road_count: int
     lane_count: int
-    continuous_lane_count: int
     protected_lane_count: int
+    shared_path_lane_count: int
+    painted_lane_count: int
+    informal_lane_count: int
     gap_count: int
-    cyclist_crash_count: int
-    avg_danger_score: float
-    max_danger_score: float
-    avg_speed_limit_kmh: float
-    high_traffic_road_count: int
+    avg_aadt: float | None
+    avg_speed_limit_kmh: float | None
+    high_crash_segment_count: int
 
 
 class FeasibilityFeatures(TypedDict):
     distance_km: float
-    protected_lane_pct: float
-    no_infra_pct: float
+    safe_lane_pct: float
+    bike_lane_quality: float
     gap_count: int
-    high_traffic_pct: float
-    avg_speed_limit: float
+    avg_aadt: float | None
+    avg_speed_limit: float | None
+    high_crash_segment_count: int
 
 
 def evaluate_feasibility(request: FeasibilityRequest) -> FeasibilityResponse:
@@ -92,12 +97,11 @@ def evaluate_feasibility(request: FeasibilityRequest) -> FeasibilityResponse:
         route_context,
     )
 
-    score_result = compute_feasibility_score(features)
-    risk_result = detect_route_risk(features)
-    score = int(score_result["score"])
+    score_result = calculate_route_score(features)
+    score = int(round(float(score_result["score"])))
 
-    warning_message = build_warning_message(score_result, risk_result)
-    explanations = build_explanations(features, score_result, risk_result)
+    warning_message = build_warning_message(features, score_result)
+    explanations = build_explanations(features, score_result)
 
     return FeasibilityResponse(
         score=score,
@@ -109,6 +113,9 @@ def evaluate_feasibility(request: FeasibilityRequest) -> FeasibilityResponse:
 
 def evaluate_feasibility_for_route_points(
     route_points: list[tuple[float, float]],
+    distance_km_override: float | None = None,
+    gap_count_override: int | None = None,
+    context_route_points: list[tuple[float, float]] | None = None,
 ) -> FeasibilityResponse:
     if len(route_points) < 2:
         return FeasibilityResponse(
@@ -120,24 +127,15 @@ def evaluate_feasibility_for_route_points(
 
     start_lat, start_lng = route_points[0]
     end_lat, end_lng = route_points[-1]
-    start_supported = is_supported_coordinate(start_lat, start_lng)
-    end_supported = is_supported_coordinate(end_lat, end_lng)
-
-    if not start_supported or not end_supported:
-        return FeasibilityResponse(
-            score=None,
-            is_supported_area=False,
-            warning_message=UNSUPPORTED_AREA_MESSAGE,
-            explanations=[
-                FeasibilityExplanation(
-                    factor="Journey is outside the supported Melbourne service area",
-                    impact="High",
-                )
-            ],
-        )
-
-    distance_km = calculate_route_points_distance_km(route_points)
-    route_context = fetch_route_context_for_route_points(route_points)
+    distance_km = (
+        float(distance_km_override)
+        if distance_km_override is not None
+        else calculate_route_points_distance_km(route_points)
+    )
+    route_context = fetch_route_context_for_route_points(
+        route_points,
+        context_route_points=context_route_points,
+    )
     fallback_request = FeasibilityRequest(
         start_lat=start_lat,
         start_lng=start_lng,
@@ -148,14 +146,13 @@ def evaluate_feasibility_for_route_points(
         fallback_request,
         distance_km,
         route_context,
-        use_context_gap_count=True,
+        gap_count_override=gap_count_override,
     )
 
-    score_result = compute_feasibility_score(features)
-    risk_result = detect_route_risk(features)
-    score = int(score_result["score"])
-    warning_message = build_warning_message(score_result, risk_result)
-    explanations = build_explanations(features, score_result, risk_result)
+    score_result = calculate_route_score(features)
+    score = int(round(float(score_result["score"])))
+    warning_message = build_warning_message(features, score_result)
+    explanations = build_explanations(features, score_result)
 
     return FeasibilityResponse(
         score=score,
@@ -251,6 +248,32 @@ def calculate_route_points_distance_km(
     return round(total_distance_km, 2)
 
 
+def compress_route_points_for_context(
+    route_points: list[tuple[float, float]],
+    max_points: int = FEASIBILITY_CONTEXT_MAX_POINTS,
+) -> list[tuple[float, float]]:
+    if len(route_points) <= max_points:
+        return route_points
+
+    if max_points <= 2:
+        return [route_points[0], route_points[-1]]
+
+    last_index = len(route_points) - 1
+    compressed: list[tuple[float, float]] = []
+
+    for sample_index in range(max_points):
+        source_index = round((sample_index / (max_points - 1)) * last_index)
+        point = route_points[source_index]
+        if compressed and compressed[-1] == point:
+            continue
+        compressed.append(point)
+
+    if compressed[-1] != route_points[-1]:
+        compressed.append(route_points[-1])
+
+    return compressed
+
+
 def fetch_route_context(request: FeasibilityRequest) -> RouteContext | None:
     query = """
         WITH route_line AS (
@@ -265,26 +288,21 @@ def fetch_route_context(request: FeasibilityRequest) -> RouteContext | None:
         lane_stats AS (
             SELECT
                 COUNT(*) AS lane_count,
-                COUNT(*) FILTER (WHERE COALESCE(cl.is_continuous, false)) AS continuous_lane_count,
-                COUNT(*) FILTER (
-                    WHERE LOWER(COALESCE(cl.protection_level, '')) IN ('high', 'medium')
-                       OR LOWER(COALESCE(cl.lane_type, '')) LIKE '%protected%'
-                       OR LOWER(COALESCE(cl.lane_type, '')) LIKE '%separated%'
-                ) AS protected_lane_count,
-                COUNT(*) FILTER (WHERE COALESCE(cl.is_continuous, false) = false) AS inferred_gap_count
+                COUNT(*) FILTER (WHERE cl.lane_type = 'protected') AS protected_lane_count,
+                COUNT(*) FILTER (WHERE cl.lane_type = 'shared_path') AS shared_path_lane_count,
+                COUNT(*) FILTER (WHERE cl.lane_type = 'painted') AS painted_lane_count,
+                COUNT(*) FILTER (WHERE cl.lane_type = 'informal') AS informal_lane_count
             FROM ridesmart.cycling_lane cl, route_line r
             WHERE ST_DWithin(cl.geom::geography, r.geom::geography, 120)
         ),
         road_stats AS (
             SELECT
                 COUNT(*) AS road_count,
-                COALESCE(AVG(rs.danger_score), 0) AS avg_danger_score,
-                COALESCE(MAX(rs.danger_score), 0) AS max_danger_score,
-                COALESCE(AVG(COALESCE(rs.speed_limit_kmh, 40)), 40) AS avg_speed_limit_kmh,
+                AVG(rs.aadt_volume) FILTER (WHERE rs.aadt_volume IS NOT NULL) AS avg_aadt,
+                AVG(rs.speed_limit_kmh) FILTER (WHERE rs.speed_limit_kmh IS NOT NULL) AS avg_speed_limit_kmh,
                 COUNT(*) FILTER (
-                    WHERE COALESCE(rs.aadt_volume, 0) >= 20000
-                       OR COALESCE(rs.danger_score, 0) >= 60
-                ) AS high_traffic_road_count
+                    WHERE COALESCE(rs.crash_count, 0) >= :high_crash_threshold
+                ) AS high_crash_segment_count
             FROM ridesmart.road_segment rs, route_line r
             WHERE ST_DWithin(rs.geom::geography, r.geom::geography, 120)
         ),
@@ -292,26 +310,19 @@ def fetch_route_context(request: FeasibilityRequest) -> RouteContext | None:
             SELECT COUNT(*) AS explicit_gap_count
             FROM ridesmart.lane_gap lg, route_line r
             WHERE ST_DWithin(lg.geom::geography, r.geom::geography, 120)
-        ),
-        crash_stats AS (
-            SELECT COUNT(*) AS cyclist_crash_count
-            FROM ridesmart.crash_record cr, route_line r
-            WHERE cr.involves_cyclist = TRUE
-              AND cr.geom IS NOT NULL
-              AND ST_DWithin(cr.geom::geography, r.geom::geography, 120)
         )
         SELECT
             road_stats.road_count,
             lane_stats.lane_count,
-            lane_stats.continuous_lane_count,
             lane_stats.protected_lane_count,
-            GREATEST(gap_stats.explicit_gap_count, lane_stats.inferred_gap_count) AS gap_count,
-            crash_stats.cyclist_crash_count,
-            road_stats.avg_danger_score,
-            road_stats.max_danger_score,
+            lane_stats.shared_path_lane_count,
+            lane_stats.painted_lane_count,
+            lane_stats.informal_lane_count,
+            gap_stats.explicit_gap_count AS gap_count,
+            road_stats.avg_aadt,
             road_stats.avg_speed_limit_kmh,
-            road_stats.high_traffic_road_count
-        FROM lane_stats, road_stats, gap_stats, crash_stats
+            road_stats.high_crash_segment_count
+        FROM lane_stats, road_stats, gap_stats
     """
     try:
         row = fetch_one(
@@ -321,6 +332,7 @@ def fetch_route_context(request: FeasibilityRequest) -> RouteContext | None:
                 "start_lng": request.start_lng,
                 "end_lat": request.end_lat,
                 "end_lng": request.end_lng,
+                "high_crash_threshold": HIGH_CRASH_SEGMENT_THRESHOLD,
             },
         )
     except Exception:
@@ -331,11 +343,17 @@ def fetch_route_context(request: FeasibilityRequest) -> RouteContext | None:
 
 def fetch_route_context_for_route_points(
     route_points: list[tuple[float, float]],
+    context_route_points: list[tuple[float, float]] | None = None,
 ) -> RouteContext | None:
     if len(route_points) < 2:
         return None
 
-    route_coordinates = ",".join(f"{lng} {lat}" for lat, lng in route_points)
+    route_context_points = (
+        context_route_points
+        if context_route_points is not None and len(context_route_points) >= 2
+        else compress_route_points_for_context(route_points)
+    )
+    route_coordinates = ",".join(f"{lng} {lat}" for lat, lng in route_context_points)
     query = """
         WITH route_line AS (
             SELECT ST_SetSRID(
@@ -346,56 +364,46 @@ def fetch_route_context_for_route_points(
         lane_stats AS (
             SELECT
                 COUNT(*) AS lane_count,
-                COUNT(*) FILTER (WHERE COALESCE(cl.is_continuous, false)) AS continuous_lane_count,
-                COUNT(*) FILTER (
-                    WHERE LOWER(COALESCE(cl.protection_level, '')) IN ('high', 'medium')
-                       OR LOWER(COALESCE(cl.lane_type, '')) LIKE '%protected%'
-                       OR LOWER(COALESCE(cl.lane_type, '')) LIKE '%separated%'
-                ) AS protected_lane_count,
-                COUNT(*) FILTER (WHERE COALESCE(cl.is_continuous, false) = false) AS inferred_gap_count
+                COUNT(*) FILTER (WHERE cl.lane_type = 'protected') AS protected_lane_count,
+                COUNT(*) FILTER (WHERE cl.lane_type = 'shared_path') AS shared_path_lane_count,
+                COUNT(*) FILTER (WHERE cl.lane_type = 'painted') AS painted_lane_count,
+                COUNT(*) FILTER (WHERE cl.lane_type = 'informal') AS informal_lane_count
             FROM ridesmart.cycling_lane cl, route_line r
-            WHERE ST_DWithin(cl.geom::geography, r.geom::geography, 120)
+            WHERE cl.geom && ST_Expand(r.geom, 0.01)
+              AND ST_DWithin(cl.geom::geography, r.geom::geography, 120)
         ),
         road_stats AS (
             SELECT
                 COUNT(*) AS road_count,
-                COALESCE(AVG(rs.danger_score), 0) AS avg_danger_score,
-                COALESCE(MAX(rs.danger_score), 0) AS max_danger_score,
-                COALESCE(AVG(COALESCE(rs.speed_limit_kmh, 40)), 40) AS avg_speed_limit_kmh,
+                AVG(rs.aadt_volume) FILTER (WHERE rs.aadt_volume IS NOT NULL) AS avg_aadt,
+                AVG(rs.speed_limit_kmh) FILTER (WHERE rs.speed_limit_kmh IS NOT NULL) AS avg_speed_limit_kmh,
                 COUNT(*) FILTER (
-                    WHERE COALESCE(rs.aadt_volume, 0) >= 20000
-                       OR COALESCE(rs.danger_score, 0) >= 60
-                ) AS high_traffic_road_count
+                    WHERE COALESCE(rs.crash_count, 0) >= :high_crash_threshold
+                ) AS high_crash_segment_count
             FROM ridesmart.road_segment rs, route_line r
-            WHERE ST_DWithin(rs.geom::geography, r.geom::geography, 120)
-        ),
-        gap_stats AS (
-            SELECT COUNT(*) AS explicit_gap_count
-            FROM ridesmart.lane_gap lg, route_line r
-            WHERE ST_DWithin(lg.geom::geography, r.geom::geography, 120)
-        ),
-        crash_stats AS (
-            SELECT COUNT(*) AS cyclist_crash_count
-            FROM ridesmart.crash_record cr, route_line r
-            WHERE cr.involves_cyclist = TRUE
-              AND cr.geom IS NOT NULL
-              AND ST_DWithin(cr.geom::geography, r.geom::geography, 120)
+            WHERE rs.geom && ST_Expand(r.geom, 0.01)
+              AND ST_DWithin(rs.geom::geography, r.geom::geography, 120)
         )
         SELECT
             road_stats.road_count,
             lane_stats.lane_count,
-            lane_stats.continuous_lane_count,
             lane_stats.protected_lane_count,
-            GREATEST(gap_stats.explicit_gap_count, lane_stats.inferred_gap_count) AS gap_count,
-            crash_stats.cyclist_crash_count,
-            road_stats.avg_danger_score,
-            road_stats.max_danger_score,
+            lane_stats.shared_path_lane_count,
+            lane_stats.painted_lane_count,
+            lane_stats.informal_lane_count,
+            road_stats.avg_aadt,
             road_stats.avg_speed_limit_kmh,
-            road_stats.high_traffic_road_count
-        FROM lane_stats, road_stats, gap_stats, crash_stats
+            road_stats.high_crash_segment_count
+        FROM lane_stats, road_stats
     """
     try:
-        row = fetch_one(query, {"route_wkt": f"LINESTRING({route_coordinates})"})
+        row = fetch_one(
+            query,
+            {
+                "route_wkt": f"LINESTRING({route_coordinates})",
+                "high_crash_threshold": HIGH_CRASH_SEGMENT_THRESHOLD,
+            },
+        )
     except Exception:
         return None
 
@@ -412,13 +420,13 @@ def build_feasibility_features(
     request: FeasibilityRequest,
     distance_km: float,
     route_context: RouteContext | None,
-    use_context_gap_count: bool = False,
+    gap_count_override: int | None = None,
 ) -> FeasibilityFeatures:
     if has_route_context_data(route_context) and route_context is not None:
         return build_features_from_context(
             distance_km,
             route_context,
-            use_context_gap_count=use_context_gap_count,
+            gap_count_override=gap_count_override,
         )
     return build_estimated_features(request, distance_km)
 
@@ -426,27 +434,35 @@ def build_feasibility_features(
 def build_features_from_context(
     distance_km: float,
     route_context: RouteContext,
-    use_context_gap_count: bool = False,
+    gap_count_override: int | None = None,
 ) -> FeasibilityFeatures:
-    road_count = max(route_context["road_count"], 1)
     lane_count = route_context["lane_count"]
-
-    protected_lane_pct = percentage(route_context["protected_lane_count"], lane_count)
-    lane_coverage_pct = percentage(route_context["continuous_lane_count"], road_count)
-    no_infra_pct = round(max(0.0, 100.0 - lane_coverage_pct), 2)
-    high_traffic_pct = percentage(route_context["high_traffic_road_count"], road_count)
+    safe_lane_count = (
+        route_context["protected_lane_count"] + route_context["shared_path_lane_count"]
+    )
+    safe_lane_pct = percentage(safe_lane_count, lane_count)
+    bike_lane_quality = calculate_bike_lane_quality(route_context)
 
     return {
         "distance_km": round(distance_km, 2),
-        "protected_lane_pct": protected_lane_pct,
-        "no_infra_pct": no_infra_pct,
+        "safe_lane_pct": safe_lane_pct,
+        "bike_lane_quality": bike_lane_quality,
         "gap_count": (
-            int(route_context["gap_count"])
-            if use_context_gap_count
+            int(gap_count_override)
+            if gap_count_override is not None
             else build_mock_gap_count(distance_km)
         ),
-        "high_traffic_pct": high_traffic_pct,
-        "avg_speed_limit": round(float(route_context["avg_speed_limit_kmh"]), 2),
+        "avg_aadt": (
+            round(float(route_context["avg_aadt"]), 2)
+            if route_context["avg_aadt"] is not None
+            else None
+        ),
+        "avg_speed_limit": (
+            round(float(route_context["avg_speed_limit_kmh"]), 2)
+            if route_context["avg_speed_limit_kmh"] is not None
+            else None
+        ),
+        "high_crash_segment_count": int(route_context["high_crash_segment_count"]),
     }
 
 
@@ -466,28 +482,32 @@ def build_estimated_features(
     )
 
     if cbd_distance_km <= 5:
-        protected_lane_pct = 40.0
-        no_infra_pct = 20.0
-        high_traffic_pct = 15.0
+        safe_lane_pct = 45.0
+        bike_lane_quality = 0.75
+        avg_aadt = 12000.0
         avg_speed_limit = 40.0
+        high_crash_segment_count = 0
     elif cbd_distance_km <= 12:
-        protected_lane_pct = 25.0
-        no_infra_pct = 35.0
-        high_traffic_pct = 25.0
+        safe_lane_pct = 30.0
+        bike_lane_quality = 0.55
+        avg_aadt = 18000.0
         avg_speed_limit = 50.0
+        high_crash_segment_count = 1
     else:
-        protected_lane_pct = 10.0
-        no_infra_pct = 50.0
-        high_traffic_pct = 40.0
+        safe_lane_pct = 15.0
+        bike_lane_quality = 0.35
+        avg_aadt = 25000.0
         avg_speed_limit = 60.0
+        high_crash_segment_count = 2
 
     return {
         "distance_km": round(distance_km, 2),
-        "protected_lane_pct": protected_lane_pct,
-        "no_infra_pct": no_infra_pct,
+        "safe_lane_pct": safe_lane_pct,
+        "bike_lane_quality": bike_lane_quality,
         "gap_count": build_mock_gap_count(distance_km),
-        "high_traffic_pct": high_traffic_pct,
+        "avg_aadt": avg_aadt,
         "avg_speed_limit": avg_speed_limit,
+        "high_crash_segment_count": high_crash_segment_count,
     }
 
 
@@ -505,47 +525,143 @@ def percentage(part: int, whole: int) -> float:
     return round((part / whole) * 100, 2)
 
 
-def build_warning_message(
-    score_result: dict[str, Any],
-    risk_result: dict[str, Any],
-) -> str | None:
-    score = int(score_result["score"])
-    risk_level = str(risk_result.get("risk_level", "Low"))
-    alerts = [str(alert) for alert in risk_result.get("alerts", [])]
+def calculate_bike_lane_quality(route_context: RouteContext) -> float:
+    lane_count = route_context["lane_count"]
+    if lane_count <= 0:
+        return 0.0
 
+    weighted_total = (
+        (route_context["protected_lane_count"] * LANE_TYPE_SCORES["protected"])
+        + (route_context["shared_path_lane_count"] * LANE_TYPE_SCORES["shared_path"])
+        + (route_context["painted_lane_count"] * LANE_TYPE_SCORES["painted"])
+        + (route_context["informal_lane_count"] * LANE_TYPE_SCORES["informal"])
+    )
+    return round(weighted_total / lane_count, 3)
+
+
+def calculate_route_score(features: FeasibilityFeatures) -> dict[str, Any]:
+    return compute_safety_score(
+        bike_lane_quality=features["bike_lane_quality"],
+        avg_aadt=features["avg_aadt"],
+        avg_speed_zone=features["avg_speed_limit"],
+        distance_km=features["distance_km"],
+        gap_count=features["gap_count"],
+        high_crash_segment_count=features["high_crash_segment_count"],
+    )
+
+
+def build_warning_message(
+    features: FeasibilityFeatures,
+    score_result: dict[str, Any],
+) -> str | None:
+    score = int(round(float(score_result["score"])))
+
+    if features["gap_count"] >= 3:
+        return "Multiple cycling lane gaps were detected on this route."
+    if features["high_crash_segment_count"] >= 2:
+        return "This route includes several road segments with elevated crash history."
+    if features["avg_speed_limit"] is not None and features["avg_speed_limit"] >= 70:
+        return "High-speed road conditions may reduce cycling safety on this route."
     if score < 50:
         return (
-            f"Cycling feasibility is currently low ({score}/100). "
+            f"Route safety is currently low ({score}/100). "
             "Please review the route carefully before riding."
         )
-
-    if risk_level == "High" and alerts:
-        return alerts[0]
-
     return None
 
 
 def build_explanations(
     features: FeasibilityFeatures,
     score_result: dict[str, Any],
-    risk_result: dict[str, Any],
 ) -> list[FeasibilityExplanation]:
-    reasons = [str(reason) for reason in generate_explanations(features)]
-    alerts = [str(alert) for alert in risk_result.get("alerts", [])]
+    messages: list[tuple[str, str]] = []
 
-    combined_messages = deduplicate_messages(reasons + alerts)
-    if not combined_messages:
-        combined_messages = [
-            f"The route is rated as {str(score_result.get('label', 'Moderate feasibility')).lower()}."
-        ]
-
-    return [
-        FeasibilityExplanation(
-            factor=message,
-            impact=infer_impact_from_message(message, score_result, risk_result),
+    if features["safe_lane_pct"] >= 45:
+        messages.append(
+            (
+                f"Protected or shared-path infrastructure covers {features['safe_lane_pct']}% of matched cycling lanes.",
+                "Low",
+            )
         )
-        for message in combined_messages[:4]
-    ]
+    elif features["safe_lane_pct"] <= 20:
+        messages.append(
+            (
+                f"Protected or shared-path coverage is limited at {features['safe_lane_pct']}% of matched cycling lanes.",
+                "High",
+            )
+        )
+
+    if features["gap_count"] > 0:
+        messages.append(
+            (
+                f"This route has {features['gap_count']} detected cycling gap segment(s).",
+                "High" if features["gap_count"] >= 2 else "Medium",
+            )
+        )
+
+    if features["avg_aadt"] is not None:
+        if features["avg_aadt"] >= 20000:
+            messages.append(
+                ("Average nearby traffic volume is high along this route.", "High")
+            )
+        elif features["avg_aadt"] >= 10000:
+            messages.append(
+                ("Average nearby traffic volume is moderate along this route.", "Medium")
+            )
+
+    if features["avg_speed_limit"] is not None:
+        if features["avg_speed_limit"] >= 70:
+            messages.append(
+                (
+                    f"Average nearby speed limits are high at {features['avg_speed_limit']} km/h.",
+                    "High",
+                )
+            )
+        elif features["avg_speed_limit"] >= 60:
+            messages.append(
+                (
+                    f"Some nearby road segments have relatively high speed limits around {features['avg_speed_limit']} km/h.",
+                    "Medium",
+                )
+            )
+
+    if features["high_crash_segment_count"] > 0:
+        messages.append(
+            (
+                (
+                    f"{features['high_crash_segment_count']} segment(s) on this route have "
+                    f"crash counts of {HIGH_CRASH_SEGMENT_THRESHOLD} or more."
+                ),
+                "High",
+            )
+        )
+
+    if features["distance_km"] > 12:
+        messages.append(
+            (
+                f"The route distance is {features['distance_km']} km, which may reduce practicality for casual riders.",
+                "Medium",
+            )
+        )
+
+    if not messages:
+        messages.append(
+            (
+                f"The route is rated as {str(score_result.get('risk_label', 'Moderate Risk')).lower()}.",
+                "Low",
+            )
+        )
+
+    explanations: list[FeasibilityExplanation] = []
+    seen: set[str] = set()
+    for message, impact in messages:
+        if message in seen:
+            continue
+        seen.add(message)
+        explanations.append(FeasibilityExplanation(factor=message, impact=impact))
+        if len(explanations) >= 4:
+            break
+    return explanations
 
 
 def deduplicate_messages(messages: list[str]) -> list[str]:
@@ -567,30 +683,4 @@ def infer_impact_from_message(
     score_result: dict[str, Any],
     risk_result: dict[str, Any],
 ) -> str:
-    lowered_message = message.lower()
-    risk_level = str(risk_result.get("risk_level", "Low"))
-    score = int(score_result["score"])
-
-    high_keywords = [
-        "gap",
-        "higher traffic",
-        "no dedicated",
-        "challenging",
-        "high-speed",
-        "substantial exposure",
-    ]
-    low_keywords = [
-        "improving safety",
-        "balanced cycling conditions",
-        "helps reduce route risk",
-    ]
-
-    if any(keyword in lowered_message for keyword in high_keywords):
-        return "High"
-    if any(keyword in lowered_message for keyword in low_keywords):
-        return "Low"
-    if risk_level == "High" or score < 50:
-        return "High"
-    if risk_level == "Medium" or score < 75:
-        return "Medium"
-    return "Low"
+    return "Medium"

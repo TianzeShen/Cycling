@@ -31,6 +31,10 @@ compute_feasibility_score = load_ai_function(
     "scoring_model",
     "compute_feasibility_score",
 )
+compute_safety_score = load_ai_function(
+    "safety_scorer",
+    "compute_safety_score",
+)
 generate_explanations = load_ai_function(
     "explanations",
     "generate_explanations",
