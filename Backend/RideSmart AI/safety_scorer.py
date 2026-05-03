@@ -16,10 +16,10 @@ BASE_SCORE_OFFSET = 12.0
 
 GAP_PENALTY_BY_COUNT = {
     0: 0,
-    1: 8,
-    2: 14,
-    3: 20,
-    4: 25,
+    1: 10,
+    2: 18,
+    3: 24,
+    4: 28,
 }
 MAX_GAP_PENALTY = 30
 HIGH_CRASH_SEGMENT_THRESHOLD = 30
