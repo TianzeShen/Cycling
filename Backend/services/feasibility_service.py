@@ -631,8 +631,9 @@ def build_explanations(
         messages.append(
             (
                 (
-                    f"{features['high_crash_segment_count']} segment(s) on this route have "
-                    f"crash counts of {HIGH_CRASH_SEGMENT_THRESHOLD} or more."
+                    "Several parts of this route pass through roads with elevated crash history."
+                    if features["high_crash_segment_count"] >= 2
+                    else "Part of this route passes through a road with elevated crash history."
                 ),
                 "High",
             )
