@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import MapboxMap from '../components/map/MapboxMap.vue'
 import RouteCard from '../components/RouteCard.vue'
@@ -22,14 +22,44 @@ const mapModes = {
   heatmapMapOnly: 'heatmapMapOnly',
 }
 
-const mode = ref(mapModes.routeInput)
-const start = ref('')
-const destination = ref('')
-const startCoordinate = ref([defaultCoordinates.start_lat, defaultCoordinates.start_lng])
-const endCoordinate = ref(null)
-const hasStartCoordinate = ref(false)
-const hasDestinationCoordinate = ref(false)
-const isInitialLocationResolved = ref(false)
+const mapStateKey = 'ridesmart_map_view_state'
+
+function readSavedMapState() {
+  try {
+    return JSON.parse(sessionStorage.getItem(mapStateKey) || 'null')
+  } catch (error) {
+    return null
+  }
+}
+
+function isCoordinatePair(value) {
+  return Array.isArray(value) && value.length >= 2 && value.every((item) => Number.isFinite(Number(item)))
+}
+
+const savedMapState = readSavedMapState()
+const shouldRestoreMapState = Boolean(
+  savedMapState &&
+    (savedMapState.routeOptions?.length ||
+      savedMapState.result ||
+      savedMapState.routeGeometry ||
+      savedMapState.destination ||
+      savedMapState.hasDestinationCoordinate),
+)
+
+const mode = ref(shouldRestoreMapState ? savedMapState.mode || mapModes.routeInput : mapModes.routeInput)
+const start = ref(shouldRestoreMapState ? savedMapState.start || '' : '')
+const destination = ref(shouldRestoreMapState ? savedMapState.destination || '' : '')
+const startCoordinate = ref(
+  shouldRestoreMapState && isCoordinatePair(savedMapState.startCoordinate)
+    ? savedMapState.startCoordinate
+    : [defaultCoordinates.start_lat, defaultCoordinates.start_lng],
+)
+const endCoordinate = ref(
+  shouldRestoreMapState && isCoordinatePair(savedMapState.endCoordinate) ? savedMapState.endCoordinate : null,
+)
+const hasStartCoordinate = ref(shouldRestoreMapState ? Boolean(savedMapState.hasStartCoordinate) : false)
+const hasDestinationCoordinate = ref(shouldRestoreMapState ? Boolean(savedMapState.hasDestinationCoordinate) : false)
+const isInitialLocationResolved = ref(shouldRestoreMapState ? true : false)
 const startSuggestions = ref([])
 const destinationSuggestions = ref([])
 const activeSearchField = ref(null)
@@ -41,21 +71,29 @@ const searchTimers = {
 const isLoading = ref(false)
 const isSearching = ref(false)
 const errorMessage = ref('')
-const result = ref(null)
-const isAnalysisVisible = ref(false)
-const routeAlerts = ref([])
-const routeAlertsStatusMessage = ref('')
-const routeOptions = ref([])
-const activeRouteIndex = ref(0)
-const routeGeometry = ref(null)
-const gapSegments = ref([])
-const routeSegments = ref([])
+const result = ref(shouldRestoreMapState ? savedMapState.result || null : null)
+const isAnalysisVisible = ref(shouldRestoreMapState ? Boolean(savedMapState.isAnalysisVisible) : false)
+const routeAlerts = ref(shouldRestoreMapState && Array.isArray(savedMapState.routeAlerts) ? savedMapState.routeAlerts : [])
+const routeAlertsStatusMessage = ref(shouldRestoreMapState ? savedMapState.routeAlertsStatusMessage || '' : '')
+const routeOptions = ref(
+  shouldRestoreMapState && Array.isArray(savedMapState.routeOptions) ? savedMapState.routeOptions : [],
+)
+const activeRouteIndex = ref(shouldRestoreMapState ? Number(savedMapState.activeRouteIndex) || 0 : 0)
+const routeGeometry = ref(shouldRestoreMapState ? savedMapState.routeGeometry || null : null)
+const gapSegments = ref(
+  shouldRestoreMapState && Array.isArray(savedMapState.gapSegments) ? savedMapState.gapSegments : [],
+)
+const routeSegments = ref(
+  shouldRestoreMapState && Array.isArray(savedMapState.routeSegments) ? savedMapState.routeSegments : [],
+)
 const heatmapRegions = ref([])
 const activeHeatmapRegion = ref(null)
 const isHeatmapLoading = ref(false)
 const heatmapError = ref('')
-const locationStatus = ref('Locating your current position...')
-const currentLocationLabel = ref('')
+const locationStatus = ref(
+  shouldRestoreMapState ? savedMapState.locationStatus || 'Route restored from this tab.' : 'Locating your current position...',
+)
+const currentLocationLabel = ref(shouldRestoreMapState ? savedMapState.currentLocationLabel || '' : '')
 const myReports = ref([])
 
 function riskTone(riskLevel) {
@@ -288,6 +326,24 @@ function formatRouteScore(score) {
   return `Score ${Math.round(value)}`
 }
 
+function routeScoreTone(score) {
+  const value = toFiniteNumber(score)
+
+  if (value === null) {
+    return 'neutral'
+  }
+
+  if (value >= 80) {
+    return 'green'
+  }
+
+  if (value >= 50) {
+    return 'yellow'
+  }
+
+  return 'red'
+}
+
 function setActiveRoute(index) {
   if (!routeOptions.value[index]) {
     return
@@ -418,9 +474,40 @@ const showAnalysis = computed(
   () => mode.value === mapModes.routeAnalysis && isAnalysisVisible.value,
 )
 const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
-const isSidePanelVisible = ref(true)
+const isSidePanelVisible = ref(shouldRestoreMapState ? savedMapState.isSidePanelVisible !== false : true)
 const showSidePanel = computed(() => isSidePanelVisible.value)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
+
+function saveMapState() {
+  const state = {
+    mode: mode.value,
+    start: start.value,
+    destination: destination.value,
+    startCoordinate: startCoordinate.value,
+    endCoordinate: endCoordinate.value,
+    hasStartCoordinate: hasStartCoordinate.value,
+    hasDestinationCoordinate: hasDestinationCoordinate.value,
+    isInitialLocationResolved: isInitialLocationResolved.value,
+    locationStatus: locationStatus.value,
+    currentLocationLabel: currentLocationLabel.value,
+    result: result.value,
+    isAnalysisVisible: isAnalysisVisible.value,
+    routeAlerts: routeAlerts.value,
+    routeAlertsStatusMessage: routeAlertsStatusMessage.value,
+    routeOptions: routeOptions.value,
+    activeRouteIndex: activeRouteIndex.value,
+    routeGeometry: routeGeometry.value,
+    gapSegments: gapSegments.value,
+    routeSegments: routeSegments.value,
+    isSidePanelVisible: isSidePanelVisible.value,
+  }
+
+  try {
+    sessionStorage.setItem(mapStateKey, JSON.stringify(state))
+  } catch (error) {
+    // Ignore storage failures, for example private browsing quota limits.
+  }
+}
 
 async function loadMelbourneSa2Heatmap() {
   if (heatmapRegions.value.length || isHeatmapLoading.value) {
@@ -616,8 +703,38 @@ function locateUserOnLoad() {
   )
 }
 
+watch(
+  [
+    mode,
+    start,
+    destination,
+    startCoordinate,
+    endCoordinate,
+    hasStartCoordinate,
+    hasDestinationCoordinate,
+    isInitialLocationResolved,
+    locationStatus,
+    currentLocationLabel,
+    result,
+    isAnalysisVisible,
+    routeAlerts,
+    routeAlertsStatusMessage,
+    routeOptions,
+    activeRouteIndex,
+    routeGeometry,
+    gapSegments,
+    routeSegments,
+    isSidePanelVisible,
+  ],
+  saveMapState,
+  { deep: true },
+)
+
 onMounted(() => {
-  locateUserOnLoad()
+  if (!shouldRestoreMapState) {
+    locateUserOnLoad()
+  }
+
   loadMyReports()
   document.addEventListener('pointerdown', handleDocumentPointerDown)
 })
@@ -645,7 +762,7 @@ const routeOptionCards = computed(() =>
       distanceLabel: formatDistance(route.distance_km),
       durationLabel: formatDuration(route.duration_min),
       scoreLabel: formatRouteScore(route.score),
-      tone: gapCount > 0 ? 'yellow' : 'green',
+      tone: routeScoreTone(route.score),
     }
   }),
 )
@@ -921,16 +1038,19 @@ const warningCards = computed(() =>
                 ]"
                 @click="setActiveRoute(route.index)"
               >
+                <span class="route-option-rank">{{ route.index + 1 }}</span>
                 <span class="route-option-main">
+                  <span class="route-option-kicker">
+                    {{ route.index === activeRouteIndex ? 'Selected route' : `Option ${route.index + 1}` }}
+                  </span>
                   <strong>{{ route.label }}</strong>
-                  <span>{{ route.provider || 'Route provider' }}</span>
+                  <span v-if="route.gapCount" class="route-option-gap">
+                    {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }} detected
+                  </span>
                 </span>
                 <span class="route-option-metrics">
                   <strong>{{ route.durationLabel }}</strong>
                   <span>{{ route.distanceLabel }}</span>
-                </span>
-                <span v-if="route.gapCount" class="route-option-gap">
-                  {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}
                 </span>
               </button>
             </div>
