@@ -111,44 +111,107 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
         ),
     )
 
-    safest_index = max(
-        range(len(route_options)),
-        key=lambda index: (
-            route_options[index].score
-            if route_options[index].score is not None
-            else -1,
-            -(
-                route_options[index].duration_min
-                if route_options[index].duration_min is not None
-                else float("inf")
-            ),
-            -(
-                route_options[index].distance_km
-                if route_options[index].distance_km is not None
-                else float("inf")
-            ),
+    max_score = max(
+        (
+            route_option.score
+            for route_option in route_options
+            if route_option.score is not None
         ),
+        default=None,
     )
-    if fastest_index == safest_index:
-        route_options[fastest_index].label = "Safest & Fastest"
-        for index in range(len(route_options)):
-            if index != fastest_index:
-                route_options[index].label = "Not Recommended"
-        return
+    safest_indices = {
+        index
+        for index, route_option in enumerate(route_options)
+        if max_score is not None and route_option.score == max_score
+    }
 
-    route_options[fastest_index].label = "Fastest"
-    route_options[safest_index].label = "Safest"
+    label_flags: list[list[str]] = [[] for _ in route_options]
+    label_flags[fastest_index].append("Fastest")
+    for safest_index in safest_indices:
+        label_flags[safest_index].insert(0, "Safest")
+
+    if fastest_index in safest_indices:
+        for index in range(len(route_options)):
+            if index == fastest_index:
+                continue
+            if index in safest_indices:
+                label_flags[index] = ["Safest"]
+            else:
+                label_flags[index] = ["Not Recommended"]
+        for index, flags in enumerate(label_flags):
+            route_options[index].label = " & ".join(flags)
+        return
 
     remaining_indices = [
         index for index in range(len(route_options))
-        if index not in {fastest_index, safest_index}
+        if index != fastest_index and index not in safest_indices
     ]
     if len(remaining_indices) == 1:
-        route_options[remaining_indices[0]].label = "Balanced"
-        return
+        remaining_index = remaining_indices[0]
+        fastest_option = route_options[fastest_index]
+        remaining_option = route_options[remaining_index]
+        safest_reference = pick_safest_reference(route_options, safest_indices)
+
+        if is_balanced_route_candidate(
+            remaining_option,
+            fastest_option,
+            safest_reference,
+        ):
+            label_flags[remaining_index] = ["Balanced"]
+        else:
+            label_flags[remaining_index] = ["Not Recommended"]
 
     for index in remaining_indices:
-        route_options[index].label = "Balanced"
+        if not label_flags[index]:
+            label_flags[index] = ["Balanced"]
+
+    for index, flags in enumerate(label_flags):
+        if not flags:
+            flags = ["Not Recommended"]
+        route_options[index].label = " & ".join(flags)
+
+
+def is_balanced_route_candidate(
+    candidate: RoutingOption,
+    fastest: RoutingOption,
+    safest: RoutingOption,
+) -> bool:
+    if (
+        candidate.score is None
+        or fastest.score is None
+        or safest.score is None
+        or candidate.duration_min is None
+        or fastest.duration_min is None
+        or safest.duration_min is None
+    ):
+        return False
+
+    min_score = min(fastest.score, safest.score)
+    max_score = max(fastest.score, safest.score)
+    min_duration = min(fastest.duration_min, safest.duration_min)
+    max_duration = max(fastest.duration_min, safest.duration_min)
+
+    return (
+        min_score <= candidate.score <= max_score
+        and min_duration <= candidate.duration_min <= max_duration
+    )
+
+
+def pick_safest_reference(
+    route_options: list[RoutingOption],
+    safest_indices: set[int],
+) -> RoutingOption:
+    return min(
+        (route_options[index] for index in safest_indices),
+        key=lambda route_option: (
+            route_option.duration_min
+            if route_option.duration_min is not None
+            else float("inf"),
+            route_option.distance_km
+            if route_option.distance_km is not None
+            else float("inf"),
+        ),
+    )
 
 
 def recommend_route(request: RoutingRequest) -> RoutingResponse:
@@ -417,7 +480,7 @@ def fetch_mapbox_route_data(request: RoutingRequest) -> dict:
         logger.warning("routing.mapbox_missing_access_token=true")
         return build_route_lookup_result()
 
-    route_data = request_mapbox_route(request, MAPBOX_PROFILE)
+    route_data = build_mapbox_route_options(request, MAPBOX_PROFILE)
     if route_data["routes"]:
         logger.warning("routing.external_provider=mapbox profile=%s", MAPBOX_PROFILE)
     else:
@@ -425,19 +488,77 @@ def fetch_mapbox_route_data(request: RoutingRequest) -> dict:
     return route_data
 
 
-def request_mapbox_route(
-    request: RoutingRequest, profile: str
-) -> dict:
-    coordinates = (
-        f"{request.start_lng},{request.start_lat};{request.end_lng},{request.end_lat}"
+def build_mapbox_route_options(request: RoutingRequest, profile: str) -> dict:
+    start_point = (request.start_lat, request.start_lng)
+    end_point = (request.end_lat, request.end_lng)
+    unique_routes: list[dict] = []
+    seen_signatures: set[tuple[tuple[float, float], ...]] = set()
+
+    primary_route_data = request_mapbox_route_points(
+        [start_point, end_point],
+        profile,
+        alternatives=False,
     )
+    if not primary_route_data["routes"]:
+        return build_route_lookup_result()
+
+    append_unique_routes(
+        unique_routes,
+        seen_signatures,
+        primary_route_data["routes"],
+        max_routes=3,
+    )
+    primary_route_points = unique_routes[0]["route_points"]
+
+    for waypoint in generate_route_variation_waypoints(request, primary_route_points):
+        if len(unique_routes) >= 3:
+            break
+        waypoint_route_data = request_mapbox_route_points(
+            [start_point, waypoint, end_point],
+            profile,
+            alternatives=False,
+        )
+        filtered_routes = [
+            route
+            for route in waypoint_route_data["routes"]
+            if not is_waypoint_out_and_back_route(route["route_points"], waypoint)
+        ]
+        append_unique_routes(
+            unique_routes,
+            seen_signatures,
+            filtered_routes,
+            max_routes=3,
+        )
+
+    if len(unique_routes) < 3:
+        alternatives_route_data = request_mapbox_route_points(
+            [start_point, end_point],
+            profile,
+            alternatives=True,
+        )
+        append_unique_routes(
+            unique_routes,
+            seen_signatures,
+            alternatives_route_data["routes"],
+            max_routes=3,
+        )
+
+    return build_route_lookup_result(routes=unique_routes[:3])
+
+
+def request_mapbox_route_points(
+    points: list[tuple[float, float]],
+    profile: str,
+    alternatives: bool,
+) -> dict:
+    coordinates = ";".join(f"{lng},{lat}" for lat, lng in points)
     query = urlencode(
         {
             "access_token": MAPBOX_ACCESS_TOKEN,
             "geometries": "geojson",
             "overview": "full",
             "steps": "false",
-            "alternatives": "true",
+            "alternatives": "true" if alternatives else "false",
         }
     )
     url = f"{MAPBOX_BASE_URL.rstrip('/')}/directions/v5/{profile}/{coordinates}?{query}"
@@ -481,6 +602,128 @@ def request_mapbox_route(
             }
         )
     return build_route_lookup_result(routes=built_routes)
+
+
+def append_unique_routes(
+    target_routes: list[dict],
+    seen_signatures: set[tuple[tuple[float, float], ...]],
+    candidate_routes: list[dict],
+    max_routes: int,
+) -> None:
+    for route in candidate_routes:
+        if len(target_routes) >= max_routes:
+            return
+        signature = route_signature(route["route_points"])
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        target_routes.append(route)
+
+
+def route_signature(route_points: list[tuple[float, float]]) -> tuple[tuple[float, float], ...]:
+    simplified_points = compress_route_points(route_points, max_points=12)
+    return tuple((round(lat, 4), round(lng, 4)) for lat, lng in simplified_points)
+
+
+def generate_route_variation_waypoints(
+    request: RoutingRequest,
+    route_points: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    if len(route_points) < 2:
+        return []
+
+    midpoint = route_points[len(route_points) // 2]
+    start = (request.start_lat, request.start_lng)
+    end = (request.end_lat, request.end_lng)
+    straight_distance_m = distance_m(start, end)
+    offset_m = min(800.0, max(250.0, straight_distance_m * 0.08))
+
+    delta_lat = end[0] - start[0]
+    delta_lng = end[1] - start[1]
+    vector_length = (delta_lat**2 + delta_lng**2) ** 0.5
+    if vector_length <= 1e-9:
+        return []
+
+    unit_perp_lat = -delta_lng / vector_length
+    unit_perp_lng = delta_lat / vector_length
+
+    lat_offset_deg = offset_m / 111_320.0
+    lng_scale = 111_320.0 * max(0.1, abs(cos(radians(midpoint[0]))))
+    lng_offset_deg = offset_m / lng_scale
+
+    left_waypoint = (
+        midpoint[0] + unit_perp_lat * lat_offset_deg,
+        midpoint[1] + unit_perp_lng * lng_offset_deg,
+    )
+    right_waypoint = (
+        midpoint[0] - unit_perp_lat * lat_offset_deg,
+        midpoint[1] - unit_perp_lng * lng_offset_deg,
+    )
+    return [left_waypoint, right_waypoint]
+
+
+def is_waypoint_out_and_back_route(
+    route_points: list[tuple[float, float]],
+    waypoint: tuple[float, float],
+) -> bool:
+    if len(route_points) < 5:
+        return False
+
+    waypoint_index = min(
+        range(len(route_points)),
+        key=lambda index: distance_m(route_points[index], waypoint),
+    )
+    if waypoint_index <= 1 or waypoint_index >= len(route_points) - 2:
+        return False
+
+    before_index = walk_index_by_distance(route_points, waypoint_index, -1, 120.0)
+    after_index = walk_index_by_distance(route_points, waypoint_index, 1, 120.0)
+    if before_index is None or after_index is None:
+        return False
+
+    anchor_distance_m = distance_m(route_points[before_index], route_points[after_index])
+    traversed_distance_m = path_distance_between_indices(
+        route_points,
+        before_index,
+        after_index,
+    )
+
+    return anchor_distance_m <= 60.0 and traversed_distance_m >= 180.0
+
+
+def walk_index_by_distance(
+    route_points: list[tuple[float, float]],
+    start_index: int,
+    step: int,
+    target_distance_m: float,
+) -> int | None:
+    accumulated_distance_m = 0.0
+    index = start_index
+
+    while 0 <= index + step < len(route_points):
+        next_index = index + step
+        accumulated_distance_m += distance_m(route_points[index], route_points[next_index])
+        index = next_index
+        if accumulated_distance_m >= target_distance_m:
+            return index
+
+    return None
+
+
+def path_distance_between_indices(
+    route_points: list[tuple[float, float]],
+    start_index: int,
+    end_index: int,
+) -> float:
+    if start_index == end_index:
+        return 0.0
+
+    lower = min(start_index, end_index)
+    upper = max(start_index, end_index)
+    total_distance_m = 0.0
+    for index in range(lower, upper):
+        total_distance_m += distance_m(route_points[index], route_points[index + 1])
+    return total_distance_m
 
 
 def fetch_osrm_route_data(request: RoutingRequest) -> dict:
