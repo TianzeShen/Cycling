@@ -69,7 +69,7 @@ let pendingHeatmapHoverFeature = null
 let lastHeatmapHoverCode = null
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
-const useRasterBaseMap = import.meta.env.VITE_MAPBOX_RASTER_BASE === 'true'
+const useRasterBaseMap = import.meta.env.VITE_MAPBOX_RASTER_BASE !== 'false'
 const MELBOURNE_BOUNDS = [
   [144.4, -38.3],
   [145.6, -37.4],
