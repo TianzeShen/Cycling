@@ -477,6 +477,16 @@ const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
 const isSidePanelVisible = ref(shouldRestoreMapState ? savedMapState.isSidePanelVisible !== false : true)
 const showSidePanel = computed(() => isSidePanelVisible.value)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
+const hasPlannedRoute = computed(() =>
+  Boolean(
+    result.value ||
+      routeOptions.value.length ||
+      routeGeometry.value ||
+      gapSegments.value.length ||
+      routeSegments.value.length ||
+      routeAlerts.value.length,
+  ),
+)
 
 function saveMapState() {
   const state = {
@@ -597,6 +607,25 @@ function showRouteMode() {
 
 function hideAnalysis() {
   isAnalysisVisible.value = false
+}
+
+function clearRoutePlan() {
+  result.value = null
+  routeOptions.value = []
+  activeRouteIndex.value = 0
+  routeAlerts.value = []
+  routeAlertsStatusMessage.value = ''
+  routeGeometry.value = null
+  gapSegments.value = []
+  routeSegments.value = []
+  destination.value = ''
+  endCoordinate.value = null
+  hasDestinationCoordinate.value = false
+  destinationSuggestions.value = []
+  activeSearchField.value = null
+  isAnalysisVisible.value = false
+  errorMessage.value = ''
+  mode.value = mapModes.routeInput
 }
 
 async function showHeatmapPanelMode() {
@@ -857,9 +886,19 @@ const warningCards = computed(() =>
             <h2>Trip Planner</h2>
             <p>Find the safest path.</p>
           </div>
-          <button type="button" class="side-panel-toggle side-panel-toggle-hide" @click="hideSidePanel">
-            Hide
-          </button>
+          <div class="planner-header-actions">
+            <button
+              v-if="hasPlannedRoute"
+              type="button"
+              class="side-panel-toggle route-clear-btn"
+              @click="clearRoutePlan"
+            >
+              Clear Route
+            </button>
+            <button type="button" class="side-panel-toggle side-panel-toggle-hide" @click="hideSidePanel">
+              Hide
+            </button>
+          </div>
         </div>
 
         <div ref="routeSearchContainer" class="route-inputs-group">

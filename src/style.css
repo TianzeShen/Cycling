@@ -1212,6 +1212,14 @@ code {
   font-size: 0.9rem;
 }
 
+.planner-header-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .side-panel-toggle {
   align-items: center;
   background: #ffffff;
@@ -1248,6 +1256,18 @@ code {
 
 .side-panel-toggle-hide:hover {
   background: rgba(15, 23, 42, 0.1);
+  box-shadow: none;
+}
+
+.route-clear-btn {
+  background: rgba(239, 68, 68, 0.1);
+  box-shadow: none;
+  color: #b91c1c;
+  padding: 0.55rem 0.9rem;
+}
+
+.route-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.16);
   box-shadow: none;
 }
 
