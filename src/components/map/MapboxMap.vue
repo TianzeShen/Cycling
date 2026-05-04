@@ -490,7 +490,9 @@ function updateLayerVisibility() {
 
   const isHeatmap = props.mode === 'heatmap'
 
+  setLayerVisibility('route-alternative-casing', !isHeatmap)
   setLayerVisibility('route-alternative-lines', !isHeatmap)
+  setLayerVisibility('route-main-casing', !isHeatmap)
   setLayerVisibility('route-segment-lines', !isHeatmap)
   setLayerVisibility('route-gap-lines', !isHeatmap)
   setLayerVisibility('route-gap-lines-dash', !isHeatmap)
@@ -601,13 +603,43 @@ function addMapSources() {
 
 function addMapLayers() {
   map.value.addLayer({
+    id: 'route-alternative-casing',
+    type: 'line',
+    source: 'route-alternatives',
+    paint: {
+      'line-width': 8,
+      'line-opacity': 0.72,
+      'line-color': '#ffffff',
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  })
+
+  map.value.addLayer({
     id: 'route-alternative-lines',
     type: 'line',
     source: 'route-alternatives',
     paint: {
-      'line-width': 5,
-      'line-opacity': 0.36,
-      'line-color': '#64748b',
+      'line-width': 5.5,
+      'line-opacity': 0.76,
+      'line-color': '#6366f1',
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  })
+
+  map.value.addLayer({
+    id: 'route-main-casing',
+    type: 'line',
+    source: 'route-main',
+    paint: {
+      'line-width': 11,
+      'line-opacity': 0.82,
+      'line-color': '#ffffff',
     },
     layout: {
       'line-cap': 'round',
@@ -620,9 +652,9 @@ function addMapLayers() {
     type: 'line',
     source: 'route-main',
     paint: {
-      'line-width': 7,
-      'line-opacity': 0.92,
-      'line-color': '#12a594',
+      'line-width': 7.5,
+      'line-opacity': 0.96,
+      'line-color': '#00b894',
     },
     layout: {
       'line-cap': 'round',

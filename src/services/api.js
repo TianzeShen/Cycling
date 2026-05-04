@@ -282,12 +282,12 @@ export function getRideSmartUserId() {
   return userId
 }
 
-export function createReport({ latitude, longitude, description = '' }) {
+export function createReport({ latitude, longitude, issueType = 'gap', description = '' }) {
   return postJson('/api/reports', {
     user_id: getRideSmartUserId(),
     latitude,
     longitude,
-    issue_type: 'gap',
+    issue_type: issueType,
     description,
   })
 }

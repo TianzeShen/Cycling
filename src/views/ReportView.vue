@@ -17,11 +17,25 @@ const isSubmitting = ref(false)
 const isLoadingReports = ref(false)
 const statusMessage = ref('')
 const errorMessage = ref('')
+const issueType = ref('gap')
 const reportMain = ref(null)
 const reportMainHeight = ref(0)
 const currentReportTime = ref(new Date())
 let reportTimeTimer = null
 let reportMainResizeObserver = null
+
+const issueTypes = [
+  { value: 'gap', label: 'Infrastructure Gap' },
+  { value: 'unsafe_intersection', label: 'Unsafe Intersection' },
+  { value: 'poor_surface', label: 'Poor Road Surface' },
+  { value: 'blocked_lane', label: 'Blocked Bike Lane' },
+  { value: 'missing_signage', label: 'Missing Signage' },
+  { value: 'dangerous_parking', label: 'Dangerous Parking' },
+  { value: 'low_visibility', label: 'Low Visibility' },
+  { value: 'debris', label: 'Debris or Obstruction' },
+  { value: 'lighting', label: 'Poor Lighting' },
+  { value: 'other', label: 'Other Hazard' },
+]
 
 const hasSelectedLocation = computed(() =>
   Number.isFinite(Number(latitude.value)) && Number.isFinite(Number(longitude.value)),
@@ -42,6 +56,10 @@ function formatReportTime(value) {
 }
 
 const currentReportTimeLabel = computed(() => currentReportTime.value.toLocaleString())
+
+function formatIssueType(value) {
+  return issueTypes.find((type) => type.value === value)?.label || 'Infrastructure Gap'
+}
 
 function syncLocationFromQuery() {
   const queryLatitude = Number(route.query.lat)
@@ -102,6 +120,7 @@ async function submitReport() {
     const report = await createReport({
       latitude: Number(latitude.value),
       longitude: Number(longitude.value),
+      issueType: issueType.value,
       description: description.value.trim(),
     })
 
@@ -178,10 +197,14 @@ onBeforeUnmount(() => {
           </section>
 
           <div class="rs-field-group">
-            <label>Auto-detected Type</label>
-            <div class="rs-pseudo-input">
+            <label for="issue-type">Issue Type</label>
+            <div class="rs-select-wrap">
               <span class="rs-dot error"></span>
-              Infrastructure Gap
+              <select id="issue-type" v-model="issueType" class="rs-select-clean">
+                <option v-for="type in issueTypes" :key="type.value" :value="type.value">
+                  {{ type.label }}
+                </option>
+              </select>
             </div>
           </div>
 
@@ -237,7 +260,7 @@ onBeforeUnmount(() => {
               <div v-else-if="reports.length" class="rs-history-list">
                 <div v-for="report in reports" :key="report.report_id" class="rs-history-row">
                   <div class="rs-row-top">
-                    <span class="rs-status-tag">{{ report.status || 'Submitted' }}</span>
+                    <span class="rs-status-tag">{{ formatIssueType(report.issue_type || report.type) }}</span>
                     <span class="rs-time-tag">{{ formatReportTime(report.reported_at) }}</span>
                   </div>
                   <p class="rs-row-desc">{{ report.description || 'No notes provided.' }}</p>

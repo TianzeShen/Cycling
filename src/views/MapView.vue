@@ -1090,6 +1090,7 @@ const warningCards = computed(() =>
                 <span class="route-option-metrics">
                   <strong>{{ route.durationLabel }}</strong>
                   <span>{{ route.distanceLabel }}</span>
+                  <span class="route-option-score">{{ route.scoreLabel }}</span>
                 </span>
               </button>
             </div>
