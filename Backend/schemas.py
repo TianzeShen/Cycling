@@ -165,3 +165,41 @@ class ReportResponse(BaseModel):
 
 class ReportListResponse(BaseModel):
     reports: list[ReportResponse] = Field(default_factory=list)
+
+
+class ReportUpdateRequest(BaseModel):
+    user_id: str = Field(..., description="Stable client-generated UUID stored in localStorage.")
+    latitude: float | None = Field(default=None, description="Updated report latitude in WGS84.")
+    longitude: float | None = Field(default=None, description="Updated report longitude in WGS84.")
+    issue_type: str | None = Field(default=None, description="Updated issue type.")
+    description: str | None = Field(default=None, description="Updated report details.")
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_update_user_id(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("user_id must not be empty.")
+        return value
+
+    @field_validator("latitude")
+    @classmethod
+    def validate_update_latitude(cls, value: float | None) -> float | None:
+        if value is None:
+            return value
+        if not -90 <= value <= 90:
+            raise ValueError("Latitude must be between -90 and 90.")
+        return value
+
+    @field_validator("longitude")
+    @classmethod
+    def validate_update_longitude(cls, value: float | None) -> float | None:
+        if value is None:
+            return value
+        if not -180 <= value <= 180:
+            raise ValueError("Longitude must be between -180 and 180.")
+        return value
+
+
+class ReportDeleteResponse(BaseModel):
+    report_id: str
+    deleted: bool = True
