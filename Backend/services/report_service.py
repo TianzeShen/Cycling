@@ -20,15 +20,6 @@ except ModuleNotFoundError:
 
 REPORT_STATUS_PENDING = "pending"
 LANE_GAP_TYPE_USER_REPORTED = "user_reported_gap"
-ISSUE_TYPE_MAPPING = {
-    "gap": "no_lane",
-    "no_lane": "no_lane",
-    "broken_lane": "broken_lane",
-    "pothole": "pothole",
-    "debris": "debris",
-    "unsafe_crossing": "unsafe_crossing",
-    "other": "other",
-}
 
 
 def create_report(payload: ReportCreateRequest) -> ReportResponse:
@@ -58,7 +49,7 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
             :report_id,
             CAST(:user_id AS uuid),
             CAST(:segment_id AS uuid),
-            CAST(:issue_type AS ridesmart.issue_type_enum),
+            :issue_type,
             CAST(:status AS ridesmart.issue_status_enum),
             :latitude,
             :longitude,
@@ -124,7 +115,8 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
         report_row = (
             connection.execute(text(insert_report_query), params).mappings().first()
         )
-        connection.execute(text(insert_lane_gap_query), params)
+        if stored_issue_type == "gap":
+            connection.execute(text(insert_lane_gap_query), params)
 
     if report_row is None:
         raise RuntimeError("Report creation failed.")
@@ -176,7 +168,7 @@ def find_nearest_segment_id(latitude: float, longitude: float) -> str | None:
 
 def normalise_issue_type(issue_type: str) -> str:
     key = issue_type.strip().lower()
-    return ISSUE_TYPE_MAPPING.get(key, "other")
+    return key or "other"
 
 
 def ensure_local_uuid_user_exists(connection, user_id: str) -> None:
