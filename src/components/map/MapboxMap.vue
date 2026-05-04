@@ -64,12 +64,17 @@ const geolocate = ref(null)
 const reportMenu = ref(null)
 let longPressTimer = null
 let longPressPoint = null
+let heatmapHoverFrame = null
+let pendingHeatmapHoverFeature = null
+let lastHeatmapHoverCode = null
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
+const useRasterBaseMap = import.meta.env.VITE_MAPBOX_RASTER_BASE === 'true'
 const MELBOURNE_BOUNDS = [
   [144.4, -38.3],
   [145.6, -37.4],
 ]
+const heatmapRegionBounds = new WeakMap()
 
 const hasToken = computed(() => Boolean(token) && token.startsWith('pk.'))
 
@@ -80,6 +85,19 @@ function clearLongPressTimer() {
   }
 
   longPressPoint = null
+}
+
+function clearPendingHeatmapHover() {
+  if (heatmapHoverFrame) {
+    window.cancelAnimationFrame(heatmapHoverFrame)
+    heatmapHoverFrame = null
+  }
+
+  pendingHeatmapHoverFeature = null
+}
+
+function setMapMovingClass(isMoving) {
+  document.body.classList.toggle('map-is-moving', isMoving)
 }
 
 function showReportMenuFromMapEvent(event) {
@@ -95,6 +113,42 @@ function emptyCollection() {
   return {
     type: 'FeatureCollection',
     features: [],
+  }
+}
+
+function getBaseMapStyle() {
+  if (!useRasterBaseMap) {
+    return mapStyle
+  }
+
+  const styleId = mapStyle.startsWith('mapbox://styles/mapbox/')
+    ? mapStyle.replace('mapbox://styles/mapbox/', '')
+    : 'streets-v12'
+  const encodedToken = encodeURIComponent(token)
+
+  return {
+    version: 8,
+    sources: {
+      'mapbox-raster-basemap': {
+        type: 'raster',
+        tiles: [
+          `https://api.mapbox.com/styles/v1/mapbox/${styleId}/tiles/512/{z}/{x}/{y}?access_token=${encodedToken}`,
+        ],
+        tileSize: 512,
+        attribution:
+          '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      },
+    },
+    layers: [
+      {
+        id: 'mapbox-raster-basemap',
+        type: 'raster',
+        source: 'mapbox-raster-basemap',
+        paint: {
+          'raster-fade-duration': 0,
+        },
+      },
+    ],
   }
 }
 
@@ -156,48 +210,144 @@ function getGapRouteCollection() {
 function getReportCollection() {
   return {
     type: 'FeatureCollection',
-    features: props.reports
-      .map((report, index) => {
-        const latitude = Number(report.latitude)
-        const longitude = Number(report.longitude)
-        const location = Number.isFinite(latitude) && Number.isFinite(longitude)
-          ? [latitude, longitude]
-          : report.location || [-37.805 + index * 0.007, 144.955 + index * 0.009]
-        const votes = Number(report.validation_count ?? report.votes ?? 1)
-
-        return pointToFeature(location, {
-          id: report.report_id || report.id,
-          type: report.issue_type || report.type || 'gap',
-          area: report.area || '',
-          status: report.status || 'submitted',
-          description: report.description || '',
-          reportedAt: report.reported_at || '',
-          votes,
-          heatWeight: Math.max(0.25, Math.min(1, votes / 50)),
-        })
-      }),
+    features: props.reports.map(reportToFeature),
   }
 }
 
+function reportToFeature(report, index) {
+  const latitude = Number(report.latitude)
+  const longitude = Number(report.longitude)
+  const location = Number.isFinite(latitude) && Number.isFinite(longitude)
+    ? [latitude, longitude]
+    : report.location || [-37.805 + index * 0.007, 144.955 + index * 0.009]
+  const votes = Number(report.validation_count ?? report.votes ?? 1)
+
+  return pointToFeature(location, {
+    id: report.report_id || report.id,
+    type: report.issue_type || report.type || 'gap',
+    area: report.area || '',
+    status: report.status || 'submitted',
+    description: report.description || '',
+    reportedAt: report.reported_at || '',
+    votes,
+    heatWeight: Math.max(0.25, Math.min(1, votes / 50)),
+  })
+}
+
+function heatmapRegionToFeature(region) {
+  return {
+    type: 'Feature',
+    properties: {
+      sa2Code: region.sa2_code,
+      suburbName: region.suburb_name,
+      score: region.score,
+      riskLevel: region.risk_level,
+      intensity: region.intensity,
+      shortCommutePct: region.short_commute_pct,
+      zeroCarHouseholdPct: region.zero_car_household_pct,
+      workingPopulationRatio: region.working_population_ratio,
+    },
+    geometry: region.geometry,
+  }
+}
+
+function extendGeometryBounds(bounds, coordinates) {
+  if (!Array.isArray(coordinates)) {
+    return bounds
+  }
+
+  if (typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+    return {
+      west: Math.min(bounds.west, coordinates[0]),
+      south: Math.min(bounds.south, coordinates[1]),
+      east: Math.max(bounds.east, coordinates[0]),
+      north: Math.max(bounds.north, coordinates[1]),
+    }
+  }
+
+  return coordinates.reduce(extendGeometryBounds, bounds)
+}
+
+function getRegionBounds(region) {
+  if (!region) {
+    return null
+  }
+
+  const cachedBounds = heatmapRegionBounds.get(region)
+
+  if (cachedBounds) {
+    return cachedBounds
+  }
+
+  const bounds = extendGeometryBounds(
+    { west: Infinity, south: Infinity, east: -Infinity, north: -Infinity },
+    region.geometry?.coordinates,
+  )
+
+  if (!Number.isFinite(bounds.west)) {
+    return null
+  }
+
+  heatmapRegionBounds.set(region, bounds)
+  return bounds
+}
+
+function getPaddedMapBounds() {
+  const bounds = map.value?.getBounds()
+
+  if (!bounds) {
+    return null
+  }
+
+  const lngPadding = Math.max(0.01, (bounds.getEast() - bounds.getWest()) * 0.45)
+  const latPadding = Math.max(0.01, (bounds.getNorth() - bounds.getSouth()) * 0.45)
+
+  return {
+    west: bounds.getWest() - lngPadding,
+    south: bounds.getSouth() - latPadding,
+    east: bounds.getEast() + lngPadding,
+    north: bounds.getNorth() + latPadding,
+  }
+}
+
+function boundsIntersect(a, b) {
+  return a.west <= b.east && a.east >= b.west && a.south <= b.north && a.north >= b.south
+}
+
+function pointInBounds(feature, bounds) {
+  const coordinates = feature.geometry?.coordinates
+
+  return Array.isArray(coordinates) &&
+    coordinates[0] >= bounds.west &&
+    coordinates[0] <= bounds.east &&
+    coordinates[1] >= bounds.south &&
+    coordinates[1] <= bounds.north
+}
+
 function getSa2HeatmapCollection() {
+  const visibleBounds = getPaddedMapBounds()
+
   return {
     type: 'FeatureCollection',
     features: props.heatmapRegions
       .filter((region) => region.geometry)
-      .map((region) => ({
-        type: 'Feature',
-        properties: {
-          sa2Code: region.sa2_code,
-          suburbName: region.suburb_name,
-          score: region.score,
-          riskLevel: region.risk_level,
-          intensity: region.intensity,
-          shortCommutePct: region.short_commute_pct,
-          zeroCarHouseholdPct: region.zero_car_household_pct,
-          workingPopulationRatio: region.working_population_ratio,
-        },
-        geometry: region.geometry,
-      })),
+      .filter((region) => {
+        const regionBounds = getRegionBounds(region)
+
+        return !visibleBounds || (regionBounds && boundsIntersect(regionBounds, visibleBounds))
+      })
+      .map(heatmapRegionToFeature),
+  }
+}
+
+function getVisibleReportCollection() {
+  const visibleBounds = getPaddedMapBounds()
+
+  return {
+    type: 'FeatureCollection',
+    features: props.reports
+      .map(reportToFeature)
+      .filter((feature) => !visibleBounds || pointInBounds(feature, visibleBounds)),
   }
 }
 
@@ -268,8 +418,14 @@ function updateHeatmapData() {
     return
   }
 
+  if (props.mode !== 'heatmap') {
+    setSourceData('sa2-heatmap-regions', emptyCollection())
+    setSourceData('community-reports', emptyCollection())
+    return
+  }
+
   setSourceData('sa2-heatmap-regions', getSa2HeatmapCollection())
-  setSourceData('community-reports', getReportCollection())
+  setSourceData('community-reports', getVisibleReportCollection())
 }
 
 function updateAlertData() {
@@ -343,9 +499,9 @@ function updateLayerVisibility() {
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
   setLayerVisibility('sa2-heatmap-lines', isHeatmap)
   setLayerVisibility('community-heatmap', isHeatmap)
-  setLayerVisibility('community-report-halo', true)
-  setLayerVisibility('community-circles', true)
-  setLayerVisibility('community-report-icons', true)
+  setLayerVisibility('community-report-halo', isHeatmap)
+  setLayerVisibility('community-circles', isHeatmap)
+  setLayerVisibility('community-report-icons', isHeatmap)
 }
 
 function showReportPopup(event) {
@@ -373,6 +529,25 @@ function showReportPopup(event) {
       <p>${escapeHtml(reportedAt)}</p>
     `)
     .addTo(map.value)
+}
+
+function emitHeatmapRegionHover(feature) {
+  const properties = feature?.properties || {}
+  const scoreValue = Number(properties.score)
+  const intensityValue = Number(properties.intensity)
+  const shortCommuteValue = Number(properties.shortCommutePct)
+  const zeroCarValue = Number(properties.zeroCarHouseholdPct)
+  const workingPopulationValue = Number(properties.workingPopulationRatio)
+
+  emit('heatmap-region-hover', {
+    name: properties.suburbName || 'Selected region',
+    riskLevel: properties.riskLevel || 'Unknown',
+    score: Number.isFinite(scoreValue) ? Math.round(scoreValue) : null,
+    intensity: Number.isFinite(intensityValue) ? Math.round(intensityValue) : null,
+    shortCommutePct: Number.isFinite(shortCommuteValue) ? shortCommuteValue : null,
+    zeroCarHouseholdPct: Number.isFinite(zeroCarValue) ? zeroCarValue : null,
+    workingPopulationRatio: Number.isFinite(workingPopulationValue) ? workingPopulationValue : null,
+  })
 }
 
 function updateLayers() {
@@ -560,26 +735,28 @@ function addMapLayers() {
     map.value.getCanvas().style.cursor = 'pointer'
 
     const feature = event.features?.[0]
-    const properties = feature?.properties || {}
-    const scoreValue = Number(properties.score)
-    const intensityValue = Number(properties.intensity)
-    const shortCommuteValue = Number(properties.shortCommutePct)
-    const zeroCarValue = Number(properties.zeroCarHouseholdPct)
-    const workingPopulationValue = Number(properties.workingPopulationRatio)
+    const regionCode = feature?.properties?.sa2Code || feature?.properties?.suburbName
 
-    emit('heatmap-region-hover', {
-      name: properties.suburbName || 'Selected region',
-      riskLevel: properties.riskLevel || 'Unknown',
-      score: Number.isFinite(scoreValue) ? Math.round(scoreValue) : null,
-      intensity: Number.isFinite(intensityValue) ? Math.round(intensityValue) : null,
-      shortCommutePct: Number.isFinite(shortCommuteValue) ? shortCommuteValue : null,
-      zeroCarHouseholdPct: Number.isFinite(zeroCarValue) ? zeroCarValue : null,
-      workingPopulationRatio: Number.isFinite(workingPopulationValue) ? workingPopulationValue : null,
-    })
+    if (!feature || regionCode === lastHeatmapHoverCode) {
+      return
+    }
+
+    lastHeatmapHoverCode = regionCode
+    pendingHeatmapHoverFeature = feature
+
+    if (!heatmapHoverFrame) {
+      heatmapHoverFrame = window.requestAnimationFrame(() => {
+        heatmapHoverFrame = null
+        emitHeatmapRegionHover(pendingHeatmapHoverFeature)
+        pendingHeatmapHoverFeature = null
+      })
+    }
   })
 
   map.value.on('mouseleave', 'sa2-heatmap-fills', () => {
     map.value.getCanvas().style.cursor = ''
+    lastHeatmapHoverCode = null
+    clearPendingHeatmapHover()
   })
 
   map.value.addLayer({
@@ -731,14 +908,20 @@ onMounted(() => {
 
   map.value = new mapboxgl.Map({
     container: mapContainer.value,
-    style: mapStyle,
+    style: getBaseMapStyle(),
+    projection: 'mercator',
     center: toMapboxLngLat(props.startPoint),
     zoom: 13,
     antialias: false,
+    collectResourceTiming: false,
+    crossSourceCollisions: false,
     dragRotate: false,
     fadeDuration: 0,
+    performanceMetricsCollection: false,
     pitchWithRotate: false,
+    refreshExpiredTiles: false,
     renderWorldCopies: false,
+    respectPrefersReducedMotion: true,
     touchPitch: false,
     maxBounds: MELBOURNE_BOUNDS,
     minZoom: 9,
@@ -791,9 +974,26 @@ onMounted(() => {
   map.value.on('touchend', clearLongPressTimer)
   map.value.on('touchcancel', clearLongPressTimer)
 
+  map.value.on('movestart', () => {
+    setMapMovingClass(true)
+  })
+
+  map.value.on('moveend', () => {
+    setMapMovingClass(false)
+
+    if (props.mode === 'heatmap') {
+      updateHeatmapData()
+    }
+  })
+
   map.value.on('dragstart', () => {
     clearLongPressTimer()
     reportMenu.value = null
+    setMapMovingClass(true)
+  })
+
+  map.value.on('dragend', () => {
+    setMapMovingClass(false)
   })
 
   map.value.on('click', () => {
@@ -803,13 +1003,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearLongPressTimer()
+  clearPendingHeatmapHover()
+  setMapMovingClass(false)
   map.value?.remove()
   map.value = null
 })
 
 watch(
   () => props.mode,
-  updateLayerVisibility,
+  () => {
+    updateLayerVisibility()
+    updateHeatmapData()
+  },
 )
 
 watch(
