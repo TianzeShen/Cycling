@@ -928,7 +928,6 @@ const warningCards = computed(() =>
                 <span class="route-option-metrics">
                   <strong>{{ route.durationLabel }}</strong>
                   <span>{{ route.distanceLabel }}</span>
-                  <span>{{ route.scoreLabel }}</span>
                 </span>
                 <span v-if="route.gapCount" class="route-option-gap">
                   {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}

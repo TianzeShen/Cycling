@@ -62,6 +62,8 @@ const map = ref(null)
 const mapReady = ref(false)
 const geolocate = ref(null)
 const reportMenu = ref(null)
+let longPressTimer = null
+let longPressPoint = null
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
 const MELBOURNE_BOUNDS = [
@@ -70,6 +72,24 @@ const MELBOURNE_BOUNDS = [
 ]
 
 const hasToken = computed(() => Boolean(token) && token.startsWith('pk.'))
+
+function clearLongPressTimer() {
+  if (longPressTimer) {
+    window.clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+
+  longPressPoint = null
+}
+
+function showReportMenuFromMapEvent(event) {
+  reportMenu.value = {
+    x: event.point.x,
+    y: event.point.y,
+    lat: event.lngLat.lat,
+    lng: event.lngLat.lng,
+  }
+}
 
 function emptyCollection() {
   return {
@@ -742,12 +762,38 @@ onMounted(() => {
 
   map.value.on('contextmenu', (event) => {
     event.preventDefault()
-    reportMenu.value = {
-      x: event.point.x,
-      y: event.point.y,
-      lat: event.lngLat.lat,
-      lng: event.lngLat.lng,
+    showReportMenuFromMapEvent(event)
+  })
+
+  map.value.on('touchstart', (event) => {
+    clearLongPressTimer()
+    longPressPoint = event.point
+    longPressTimer = window.setTimeout(() => {
+      showReportMenuFromMapEvent(event)
+      map.value?.getCanvas().blur()
+      longPressTimer = null
+    }, 650)
+  })
+
+  map.value.on('touchmove', (event) => {
+    if (!longPressPoint) {
+      return
     }
+
+    const movedX = Math.abs(event.point.x - longPressPoint.x)
+    const movedY = Math.abs(event.point.y - longPressPoint.y)
+
+    if (movedX > 8 || movedY > 8) {
+      clearLongPressTimer()
+    }
+  })
+
+  map.value.on('touchend', clearLongPressTimer)
+  map.value.on('touchcancel', clearLongPressTimer)
+
+  map.value.on('dragstart', () => {
+    clearLongPressTimer()
+    reportMenu.value = null
   })
 
   map.value.on('click', () => {
@@ -756,6 +802,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearLongPressTimer()
   map.value?.remove()
   map.value = null
 })

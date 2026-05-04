@@ -116,11 +116,6 @@
                 <h3>Route Score</h3>
                 <p>A single feasibility score turns complex infrastructure signals into a quick decision.</p>
               </div>
-              <div class="card-arrow">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12h14M12 5l7 7-7 7"></path>
-                </svg>
-              </div>
             </article>
 
             <article class="intel-card">
@@ -129,11 +124,6 @@
                 <h3>Risk Segments</h3>
                 <p>Colour-coded route sections reveal where a journey is comfortable, uncertain, or exposed.</p>
               </div>
-              <div class="card-arrow">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12h14M12 5l7 7-7 7"></path>
-                </svg>
-              </div>
             </article>
 
             <article class="intel-card">
@@ -141,11 +131,6 @@
               <div class="card-text">
                 <h3>Local Reports</h3>
                 <p>Community reports add current context that static cycling maps often miss.</p>
-              </div>
-              <div class="card-arrow">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12h14M12 5l7 7-7 7"></path>
-                </svg>
               </div>
             </article>
           </div>

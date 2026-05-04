@@ -58,7 +58,7 @@ const scoreLabel = computed(() => {
 
 const warningMessage = computed(() => {
   if (displayScore.value === null) {
-    return 'The routing service did not return a feasibility score for this route yet.'
+    return 'The routing service did not return a safety score for this route yet.'
   }
 
   if (props.result.warning_message) {
@@ -77,7 +77,7 @@ const warningMessage = computed(() => {
   <div class="glass-panel score-panel-vibrant">
     <div class="score-panel-head">
       <div>
-        <h3>Feasibility Score</h3>
+        <h3>Safety Score</h3>
         <div
           class="score-value score-tooltip-anchor"
           tabindex="0"
@@ -88,7 +88,7 @@ const warningMessage = computed(() => {
           <span id="score-explanation-tooltip" class="score-tooltip" role="tooltip">
             This score starts from 100 and adjusts for route distance, bike lane gaps, high-traffic roads,
             missing cycling infrastructure, and protected bike lanes. Higher scores mean the route is more
-            practical for cycling.
+            safer for cycling.
           </span>
         </div>
       </div>

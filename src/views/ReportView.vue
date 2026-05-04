@@ -19,6 +19,8 @@ const statusMessage = ref('')
 const errorMessage = ref('')
 const reportMain = ref(null)
 const reportMainHeight = ref(0)
+const currentReportTime = ref(new Date())
+let reportTimeTimer = null
 let reportMainResizeObserver = null
 
 const hasSelectedLocation = computed(() =>
@@ -38,6 +40,8 @@ function formatReportTime(value) {
 
   return new Date(value).toLocaleString()
 }
+
+const currentReportTimeLabel = computed(() => currentReportTime.value.toLocaleString())
 
 function syncLocationFromQuery() {
   const queryLatitude = Number(route.query.lat)
@@ -119,6 +123,9 @@ onMounted(() => {
   syncLocationFromQuery()
   resolveSelectedLocationName()
   loadReports()
+  reportTimeTimer = window.setInterval(() => {
+    currentReportTime.value = new Date()
+  }, 60000)
 
   if (reportMain.value && window.ResizeObserver) {
     reportMainResizeObserver = new ResizeObserver(([entry]) => {
@@ -129,6 +136,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.clearInterval(reportTimeTimer)
   reportMainResizeObserver?.disconnect()
 })
 </script>
@@ -160,6 +168,13 @@ onBeforeUnmount(() => {
                 <span class="rs-mono">LNG {{ formatCoordinate(longitude) }}</span>
               </div>
             </div>
+          </section>
+
+          <section class="rs-report-time-inline">
+            <div class="rs-meta-header">
+              <h3>Report Time</h3>
+            </div>
+            <span class="rs-mono">{{ currentReportTimeLabel }}</span>
           </section>
 
           <div class="rs-field-group">

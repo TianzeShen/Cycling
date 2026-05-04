@@ -20,70 +20,86 @@ const helpContentByRoute = {
     summary: 'Start here to understand what the app does before planning a ride.',
     steps: [
       {
-        title: 'Explore the main actions',
-        body: 'Use Launch Map to begin route planning, or jump to Report Issue if you want to log a hazard immediately.',
+        title: 'Start with the main actions',
+        body: 'Use Launch Map to plan a ride, or open Report Issue when you already know the location of a cycling hazard.',
       },
       {
-        title: 'Scan the core capabilities',
-        body: 'The home page introduces routing, safety heatmaps, and community reporting so new users can understand what each section is for.',
+        title: 'Understand the intelligence signals',
+        body: 'The overview explains safety scoring, risk segments, local reports, heatmaps, and the data sources behind RideSmart.',
       },
       {
         title: 'Read the data disclaimer',
-        body: 'The footer explains where the data comes from and reminds riders that live road conditions can still change in the real world.',
+        body: 'The footer explains that AI-generated safety signals are informational and that real road conditions can still change.',
       },
     ],
   },
   map: {
-    title: 'Plan a safer trip',
-    summary: 'Use the map workspace to search for places, compare signals, and review route warnings.',
+    title: 'Use the map workspace',
+    summary: 'Plan routes, compare safety signals, inspect warnings, and choose report locations from the map.',
     steps: [
       {
         title: 'Set your start point',
-        body: 'Type an address or tap the location icon to use your current position. Suggestions will appear as you type.',
+        body: 'Type an address or use the location icon to set your current position as the route start.',
       },
       {
         title: 'Choose a destination',
-        body: 'Enter where you want to go and select the best-matching suggestion from the list so the route uses exact coordinates.',
+        body: 'Enter your destination and select a suggestion so RideSmart can use exact coordinates for routing.',
       },
       {
-        title: 'Generate and review the route',
-        body: 'Select Generate Route to request a route score, route warnings, and coloured map segments from the backend.',
+        title: 'Generate and compare routes',
+        body: 'Select Generate Route to view route options with travel time, distance, the Safety Score panel, warnings, and gap segments.',
       },
       {
         title: 'Switch map modes',
-        body: 'Use Route and Heatmap at the top-right of the map to swap between turn-by-turn analysis and the city-wide safety layer.',
+        body: 'Use Route and Heatmap controls to switch between route planning and the city-wide safety layer.',
+      },
+      {
+        title: 'Report from the map',
+        body: 'On desktop, right-click a location and choose Report gap here. On mobile, long-press the map to open the same report action.',
       },
     ],
   },
   report: {
-    title: 'Submit a safety report',
-    summary: 'The reporting page helps riders log hazards that can improve future route awareness.',
+    title: 'Submit a hazard report',
+    summary: 'Create a user-reported infrastructure gap with map location, current time, notes, and local identity.',
     steps: [
       {
-        title: 'Pick the issue type',
-        body: 'Choose the closest hazard type from the dropdown so the report is categorized consistently.',
+        title: 'Start from a map location',
+        body: 'Reports are created from the map. The selected place name, coordinates, and current report time are shown at the top of the form.',
       },
       {
-        title: 'Use the auto-filled context',
-        body: 'GPS and nearby duplicate information are shown beside the form to help users avoid submitting the same issue twice.',
+        title: 'Review the report type',
+        body: 'The current minimum version automatically classifies the issue as an infrastructure gap.',
       },
       {
-        title: 'Create the report',
-        body: 'Select Create report to save the issue locally and prepare it for future syncing.',
+        title: 'Add field notes',
+        body: 'Use Field Notes to describe the hazard, such as a missing lane, unsafe merge, obstruction, or sudden gap.',
+      },
+      {
+        title: 'Broadcast the report',
+        body: 'Select Broadcast Report to submit it with your local RideSmart user ID. The sidebar shows your identity and contribution log.',
       },
     ],
   },
   profile: {
     title: 'Track your impact',
-    summary: 'The profile page shows how a rider has contributed to safer cycling decisions over time.',
+    summary: 'Review your contribution score, reward progress, badges, report status, and submitted report history.',
     steps: [
       {
         title: 'Read your contribution summary',
-        body: 'The top card highlights total safety points, submitted reports, validations, and routes improved.',
+        body: 'The top section shows safety points, submitted reports, validations received, routes improved, and your local user ID.',
       },
       {
-        title: 'Review badges',
-        body: 'Each badge explains a type of contribution so riders can quickly see how they have helped the community.',
+        title: 'Check progress and badges',
+        body: 'Use the milestone and badge sections to see which rewards are earned and what contribution threshold comes next.',
+      },
+      {
+        title: 'Review report status',
+        body: 'The contribution pipeline groups your reports into pending, validated, and resolved states.',
+      },
+      {
+        title: 'Manage submitted reports',
+        body: 'In My submitted reports, refresh activity, edit a report description, or delete your own report when the backend endpoint is available.',
       },
     ],
   },

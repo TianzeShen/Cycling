@@ -2481,7 +2481,7 @@ code {
   border: 1px solid rgba(15, 23, 42, 0.05);
   border-radius: 20px;
   box-shadow: 0 4px 15px rgba(15, 23, 42, 0.03);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   padding: 2.5rem;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -4075,6 +4075,15 @@ code {
 
 .rs-location-inline .rs-meta-header {
   margin-bottom: 1rem;
+}
+
+.rs-report-time-inline {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  padding-bottom: 1.1rem;
+}
+
+.rs-report-time-inline .rs-meta-header {
+  margin-bottom: 0.7rem;
 }
 
 .rs-field-group {
