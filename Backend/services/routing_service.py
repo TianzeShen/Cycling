@@ -133,13 +133,41 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
         label_flags[safest_index].insert(0, "Safest")
 
     if fastest_index in safest_indices:
+        longest_duration_index = max(
+            range(len(route_options)),
+            key=lambda index: (
+                route_options[index].duration_min
+                if route_options[index].duration_min is not None
+                else float("-inf"),
+                route_options[index].distance_km
+                if route_options[index].distance_km is not None
+                else float("-inf"),
+                index,
+            ),
+        )
+        longest_distance_index = max(
+            range(len(route_options)),
+            key=lambda index: (
+                route_options[index].distance_km
+                if route_options[index].distance_km is not None
+                else float("-inf"),
+                route_options[index].duration_min
+                if route_options[index].duration_min is not None
+                else float("-inf"),
+                index,
+            ),
+        )
         for index in range(len(route_options)):
             if index == fastest_index:
                 continue
             if index in safest_indices:
                 label_flags[index] = ["Safest"]
+            elif index == longest_duration_index:
+                label_flags[index] = ["Time Consuming"]
+            elif index == longest_distance_index:
+                label_flags[index] = ["Longest"]
             else:
-                label_flags[index] = ["Not Recommended"]
+                label_flags[index] = ["Balanced"]
         for index, flags in enumerate(label_flags):
             route_options[index].label = " & ".join(flags)
         return
@@ -161,7 +189,36 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
         ):
             label_flags[remaining_index] = ["Balanced"]
         else:
-            label_flags[remaining_index] = ["Not Recommended"]
+            longest_duration_index = max(
+                range(len(route_options)),
+                key=lambda index: (
+                    route_options[index].duration_min
+                    if route_options[index].duration_min is not None
+                    else float("-inf"),
+                    route_options[index].distance_km
+                    if route_options[index].distance_km is not None
+                    else float("-inf"),
+                    index,
+                ),
+            )
+            longest_distance_index = max(
+                range(len(route_options)),
+                key=lambda index: (
+                    route_options[index].distance_km
+                    if route_options[index].distance_km is not None
+                    else float("-inf"),
+                    route_options[index].duration_min
+                    if route_options[index].duration_min is not None
+                    else float("-inf"),
+                    index,
+                ),
+            )
+            if remaining_index == longest_duration_index:
+                label_flags[remaining_index] = ["Time Consuming"]
+            elif remaining_index == longest_distance_index:
+                label_flags[remaining_index] = ["Longest"]
+            else:
+                label_flags[remaining_index] = ["Balanced"]
 
     for index in remaining_indices:
         if not label_flags[index]:
@@ -169,7 +226,7 @@ def assign_route_option_labels(route_options: list[RoutingOption]) -> None:
 
     for index, flags in enumerate(label_flags):
         if not flags:
-            flags = ["Not Recommended"]
+            flags = ["Balanced"]
         route_options[index].label = " & ".join(flags)
 
 
