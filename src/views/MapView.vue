@@ -498,6 +498,7 @@ const showAnalysis = computed(
 )
 const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
 const isSidePanelVisible = ref(shouldRestoreMapState ? savedMapState.isSidePanelVisible !== false : true)
+const showReportMarkers = ref(shouldRestoreMapState ? savedMapState.showReportMarkers !== false : true)
 const showSidePanel = computed(() => isSidePanelVisible.value)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
 const hasPlannedRoute = computed(() =>
@@ -533,6 +534,7 @@ function saveMapState() {
     gapSegments: gapSegments.value,
     routeSegments: routeSegments.value,
     isSidePanelVisible: isSidePanelVisible.value,
+    showReportMarkers: showReportMarkers.value,
   }
 
   try {
@@ -670,6 +672,10 @@ function hideSidePanel() {
   isSidePanelVisible.value = false
 }
 
+function toggleReportMarkers() {
+  showReportMarkers.value = !showReportMarkers.value
+}
+
 async function showSidePanelAgain() {
   isSidePanelVisible.value = true
 
@@ -781,6 +787,7 @@ watch(
     gapSegments,
     routeSegments,
     isSidePanelVisible,
+    showReportMarkers,
   ],
   saveMapState,
   { deep: true },
@@ -880,6 +887,7 @@ const warningCards = computed(() =>
         :start-point="startCoordinate"
         :end-point="endCoordinate"
         :reports="myReports"
+        :show-report-markers="showReportMarkers"
         @location-found="handleLocationFound"
         @heatmap-region-hover="handleHeatmapRegionHover"
         @report-location="handleReportLocation"
@@ -891,16 +899,27 @@ const warningCards = computed(() =>
       </div>
     </div>
 
-    <div class="floating-controls" aria-label="Map mode controls">
+    <div
+      class="floating-controls"
+      :class="{ 'floating-controls-stacked': showSidePanel && showAnalysis && routeOptionCards.length }"
+      aria-label="Map mode controls"
+    >
       <button type="button" :class="{ secondary: isHeatmapMode }" @click="showRouteMode">Route</button>
       <button type="button" :class="{ secondary: !isHeatmapMode }" @click="showHeatmapPanelMode">
         {{ isHeatmapLoading ? 'Loading...' : 'Heatmap' }}
+      </button>
+      <button
+        type="button"
+        :class="{ secondary: !showReportMarkers }"
+        @click="toggleReportMarkers"
+      >
+        {{ showReportMarkers ? 'Reports On' : 'Reports Off' }}
       </button>
     </div>
 
     <transition name="slide-up">
       <section
-        v-if="showAnalysis && routeOptionCards.length"
+        v-if="showSidePanel && showAnalysis && routeOptionCards.length"
         class="route-top-strip"
         :class="{ 'with-side-panel': showSidePanel }"
         aria-label="Route options"

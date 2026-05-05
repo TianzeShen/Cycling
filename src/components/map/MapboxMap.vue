@@ -49,6 +49,10 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  showReportMarkers: {
+    type: Boolean,
+    default: true,
+  },
   autoGeolocate: {
     type: Boolean,
     default: false,
@@ -433,7 +437,7 @@ function updateHeatmapData() {
 
   if (props.mode !== 'heatmap') {
     setSourceData('sa2-heatmap-regions', emptyCollection())
-    setSourceData('community-reports', emptyCollection())
+    setSourceData('community-reports', getVisibleReportCollection())
     return
   }
 
@@ -502,6 +506,7 @@ function updateLayerVisibility() {
   }
 
   const isHeatmap = props.mode === 'heatmap'
+  const showReportMarkers = props.showReportMarkers
 
   setLayerVisibility('route-alternative-casing', !isHeatmap)
   setLayerVisibility('route-alternative-lines', !isHeatmap)
@@ -514,9 +519,9 @@ function updateLayerVisibility() {
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
   setLayerVisibility('sa2-heatmap-lines', isHeatmap)
   setLayerVisibility('community-heatmap', isHeatmap)
-  setLayerVisibility('community-report-halo', isHeatmap)
-  setLayerVisibility('community-circles', isHeatmap)
-  setLayerVisibility('community-report-icons', isHeatmap)
+  setLayerVisibility('community-report-halo', showReportMarkers)
+  setLayerVisibility('community-circles', showReportMarkers)
+  setLayerVisibility('community-report-icons', showReportMarkers)
 }
 
 function showReportPopup(event) {
@@ -1137,6 +1142,11 @@ watch(
   () => props.reports,
   updateHeatmapData,
   { deep: true },
+)
+
+watch(
+  () => props.showReportMarkers,
+  updateLayerVisibility,
 )
 
 watch(
