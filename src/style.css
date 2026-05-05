@@ -1076,6 +1076,14 @@ code {
     top: auto;
   }
 
+  .map-report-hint {
+    bottom: 4.75rem;
+    left: 1rem;
+    max-width: calc(100% - 2rem);
+    transform: none;
+    width: calc(100% - 2rem);
+  }
+
   .page-grid,
   .report-layout,
   .profile-grid {
@@ -1223,6 +1231,19 @@ code {
   flex-direction: column;
   gap: 0.18rem;
   padding: 0.75rem 0.9rem;
+}
+
+.map-report-hint {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  bottom: 1.25rem;
+  left: 50%;
+  max-width: min(520px, calc(100% - 2rem));
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 9;
 }
 
 .report-entry-hint {

@@ -55,7 +55,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['location-found', 'heatmap-region-hover', 'report-location'])
+const emit = defineEmits(['location-found', 'heatmap-region-hover', 'report-location', 'route-selected'])
 
 const mapContainer = ref(null)
 const map = ref(null)
@@ -109,6 +109,18 @@ function showReportMenuFromMapEvent(event) {
   }
 }
 
+function handleRouteOptionClick(event) {
+  const feature = event.features?.[0]
+  const routeIndex = Number(feature?.properties?.routeIndex)
+
+  if (!Number.isInteger(routeIndex)) {
+    return
+  }
+
+  reportMenu.value = null
+  emit('route-selected', routeIndex)
+}
+
 function emptyCollection() {
   return {
     type: 'FeatureCollection',
@@ -128,6 +140,7 @@ function getBaseMapStyle() {
 
   return {
     version: 8,
+    glyphs: `https://api.mapbox.com/fonts/v1/mapbox/{fontstack}/{range}.pbf?access_token=${encodedToken}`,
     sources: {
       'mapbox-raster-basemap': {
         type: 'raster',
@@ -633,6 +646,21 @@ function addMapLayers() {
   })
 
   map.value.addLayer({
+    id: 'route-alternative-hit',
+    type: 'line',
+    source: 'route-alternatives',
+    paint: {
+      'line-width': 24,
+      'line-opacity': 0.01,
+      'line-color': '#ffffff',
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  })
+
+  map.value.addLayer({
     id: 'route-main-casing',
     type: 'line',
     source: 'route-main',
@@ -888,6 +916,15 @@ function addMapLayers() {
 
   map.value.on('click', 'community-report-icons', showReportPopup)
   map.value.on('click', 'community-circles', showReportPopup)
+  map.value.on('click', 'route-alternative-hit', handleRouteOptionClick)
+
+  map.value.on('mouseenter', 'route-alternative-hit', () => {
+    map.value.getCanvas().style.cursor = 'pointer'
+  })
+
+  map.value.on('mouseleave', 'route-alternative-hit', () => {
+    map.value.getCanvas().style.cursor = ''
+  })
 
   map.value.on('mouseenter', 'community-report-icons', () => {
     map.value.getCanvas().style.cursor = 'pointer'

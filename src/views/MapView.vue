@@ -855,6 +855,7 @@ const warningCards = computed(() =>
         @location-found="handleLocationFound"
         @heatmap-region-hover="handleHeatmapRegionHover"
         @report-location="handleReportLocation"
+        @route-selected="setActiveRoute"
       />
       <div v-else class="glass-panel locating-panel">
         <h2>Locating...</h2>
@@ -867,6 +868,11 @@ const warningCards = computed(() =>
       <button type="button" :class="{ secondary: !isHeatmapMode }" @click="showHeatmapPanelMode">
         {{ isHeatmapLoading ? 'Loading...' : 'Heatmap' }}
       </button>
+    </div>
+
+    <div class="map-report-hint" aria-label="How to report a map issue">
+      <span>Report a hazard</span>
+      <p>Desktop: right-click the map. Mobile: long-press a location.</p>
     </div>
 
     <button
@@ -899,11 +905,6 @@ const warningCards = computed(() =>
               Hide
             </button>
           </div>
-        </div>
-
-        <div class="map-report-hint" aria-label="How to report a map issue">
-          <span>Report a hazard</span>
-          <p>Desktop: right-click the map. Mobile: long-press a location.</p>
         </div>
 
         <div ref="routeSearchContainer" class="route-inputs-group">
