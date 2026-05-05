@@ -901,6 +901,11 @@ const warningCards = computed(() =>
           </div>
         </div>
 
+        <div class="map-report-hint" aria-label="How to report a map issue">
+          <span>Report a hazard</span>
+          <p>Desktop: right-click the map. Mobile: long-press a location.</p>
+        </div>
+
         <div ref="routeSearchContainer" class="route-inputs-group">
           <div class="route-connector">
             <div class="dot origin-dot"></div>

@@ -193,6 +193,10 @@ onBeforeUnmount(() => {
             Your local knowledge helps refine our AI routing. Pinpoint missing infrastructure to
             instantly alert other riders.
           </p>
+          <div class="report-entry-hint" aria-label="How to choose report location">
+            <span>Choose location from map</span>
+            <p>Desktop: right-click the map. Mobile: long-press a location.</p>
+          </div>
         </header>
 
         <form class="rs-form-clean" @submit.prevent="submitReport">
