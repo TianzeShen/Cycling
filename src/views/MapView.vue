@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import MapboxMap from '../components/map/MapboxMap.vue'
 import RouteCard from '../components/RouteCard.vue'
@@ -64,6 +64,10 @@ const startSuggestions = ref([])
 const destinationSuggestions = ref([])
 const activeSearchField = ref(null)
 const routeSearchContainer = ref(null)
+const mapSidePanel = ref(null)
+const analysisStack = ref(null)
+const isAnalysisHighlighted = ref(false)
+let analysisHighlightTimer = null
 const searchTimers = {
   start: null,
   destination: null,
@@ -358,6 +362,25 @@ function setActiveRoute(index) {
   routeAlerts.value = normaliseRouteAlerts(route)
 }
 
+async function revealRouteAnalysis() {
+  await nextTick()
+
+  if (!window.matchMedia('(max-width: 620px)').matches || !mapSidePanel.value || !analysisStack.value) {
+    return
+  }
+
+  mapSidePanel.value.scrollTo({
+    top: Math.max(0, analysisStack.value.offsetTop - 8),
+    behavior: 'smooth',
+  })
+
+  isAnalysisHighlighted.value = true
+  window.clearTimeout(analysisHighlightTimer)
+  analysisHighlightTimer = window.setTimeout(() => {
+    isAnalysisHighlighted.value = false
+  }, 1400)
+}
+
 function insightImpactTone(impact) {
   const value = String(impact || '').toLowerCase()
 
@@ -594,6 +617,10 @@ async function evaluateJourney() {
         ? mapModes.routeAnalysis
         : mapModes.routeInput
     isLoading.value = false
+
+    if (isAnalysisVisible.value) {
+      revealRouteAnalysis()
+    }
   }
 }
 
@@ -769,6 +796,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.clearTimeout(analysisHighlightTimer)
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })
 
@@ -885,7 +913,7 @@ const warningCards = computed(() =>
     </button>
 
     <transition name="panel-slide">
-      <aside v-if="showSidePanel" class="map-side-panel">
+      <aside v-if="showSidePanel" ref="mapSidePanel" class="map-side-panel">
         <form v-if="showRouteControls" class="glass-panel compact-planner" @submit.prevent="evaluateJourney">
         <div class="planner-header">
           <div>
@@ -995,8 +1023,14 @@ const warningCards = computed(() =>
           </div>
         </div>
 
-        <button type="submit" class="primary glow-btn" :disabled="isLoading || !isInitialLocationResolved">
-          {{ isLoading ? 'Computing...' : 'Generate Route' }}
+        <button
+          type="submit"
+          class="primary glow-btn"
+          :class="{ loading: isLoading }"
+          :disabled="isLoading || !isInitialLocationResolved"
+        >
+          <span v-if="isLoading" class="route-loading-spinner" aria-hidden="true"></span>
+          <span>{{ isLoading ? 'Computing route...' : 'Generate Route' }}</span>
         </button>
         <p v-if="isSearching" class="helper-text">Searching addresses...</p>
         <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
@@ -1057,7 +1091,12 @@ const warningCards = computed(() =>
       </section>
 
       <transition name="slide-up">
-        <div v-if="showAnalysis" class="analysis-stack">
+        <div
+          v-if="showAnalysis"
+          ref="analysisStack"
+          class="analysis-stack"
+          :class="{ 'analysis-stack-highlight': isAnalysisHighlighted }"
+        >
           <ScorePanel
             v-if="result"
             :result="result"
