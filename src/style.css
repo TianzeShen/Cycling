@@ -1084,6 +1084,18 @@ code {
     width: calc(100% - 2rem);
   }
 
+  .route-top-strip,
+  .route-top-strip.with-side-panel {
+    height: auto;
+    left: 1rem;
+    right: 1rem;
+    top: 1rem;
+  }
+
+  .route-top-list {
+    grid-auto-columns: minmax(210px, 72vw);
+  }
+
   .page-grid,
   .report-layout,
   .profile-grid {
@@ -1206,18 +1218,38 @@ code {
   overflow: visible;
   padding: 1.5rem;
   position: relative;
+  transition: gap 0.24s ease, padding 0.24s ease;
   z-index: 30;
+}
+
+.compact-planner.planner-collapsed {
+  gap: 0.8rem;
+  padding: 1.1rem 1.25rem;
 }
 
 .planner-header h2 {
   color: var(--dark);
   font-size: 1.6rem;
   margin-bottom: 0.2rem;
+  transition: font-size 0.24s ease, margin 0.24s ease;
 }
 
 .planner-header p {
   color: var(--text-muted);
   font-size: 0.9rem;
+  transition: max-height 0.24s ease, opacity 0.2s ease, transform 0.24s ease;
+}
+
+.planner-collapsed .planner-header h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0;
+}
+
+.planner-collapsed .planner-header p {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-4px);
 }
 
 .map-report-hint,
@@ -1310,6 +1342,11 @@ code {
   padding: 0.55rem 1rem;
 }
 
+.planner-collapsed .side-panel-toggle-hide,
+.planner-collapsed .route-clear-btn {
+  padding: 0.45rem 0.8rem;
+}
+
 .side-panel-toggle-hide:hover {
   background: rgba(15, 23, 42, 0.1);
   box-shadow: none;
@@ -1335,6 +1372,12 @@ code {
   display: flex;
   overflow: visible;
   padding: 0.5rem;
+  transition: border-radius 0.24s ease, padding 0.24s ease;
+}
+
+.planner-collapsed .route-inputs-group {
+  border-radius: 14px;
+  padding: 0.28rem;
 }
 
 .route-connector {
@@ -1343,6 +1386,11 @@ code {
   flex-direction: column;
   gap: 4px;
   padding: 1.2rem 0.8rem;
+  transition: padding 0.24s ease;
+}
+
+.planner-collapsed .route-connector {
+  padding: 0.8rem 0.65rem;
 }
 
 .route-connector .dot {
@@ -1396,6 +1444,12 @@ code {
   box-shadow: none;
   font-size: 1.05rem;
   padding: 1rem 0.5rem;
+  transition: font-size 0.24s ease, padding 0.24s ease;
+}
+
+.planner-collapsed .input-wrapper input {
+  font-size: 0.92rem;
+  padding: 0.62rem 0.4rem;
 }
 
 .input-wrapper input:focus {
@@ -1433,7 +1487,13 @@ code {
   overflow: hidden;
   padding: 1rem;
   position: relative;
+  transition: padding 0.24s ease, font-size 0.24s ease, transform 0.2s ease, box-shadow 0.2s ease;
   width: 100%;
+}
+
+.planner-collapsed .glow-btn {
+  font-size: 0.9rem;
+  padding: 0.68rem;
 }
 
 .glow-btn span {
@@ -1575,6 +1635,102 @@ code {
   color: var(--text-muted);
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+.route-top-strip {
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 24px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  gap: 1rem;
+  height: var(--top-route-panel-height);
+  left: 1.5rem;
+  padding: 1rem;
+  position: absolute;
+  right: 15.5rem;
+  top: 1.5rem;
+  z-index: 9;
+}
+
+.route-top-strip.with-side-panel {
+  left: calc(400px + 3rem);
+}
+
+.route-top-header {
+  align-items: flex-start;
+  background: rgba(15, 23, 42, 0.035);
+  border: 1px solid rgba(15, 23, 42, 0.045);
+  border-radius: 18px;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 7.2rem;
+  padding: 1rem;
+}
+
+.route-top-header span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.route-top-header strong {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.route-top-list {
+  align-items: stretch;
+  display: grid;
+  flex: 1;
+  gap: 0.75rem;
+  grid-auto-columns: minmax(230px, 1fr);
+  grid-auto-flow: column;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0.05rem 0.2rem 0.25rem;
+  scrollbar-width: thin;
+}
+
+.route-top-list::-webkit-scrollbar {
+  height: 5px;
+}
+
+.route-top-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.route-top-card {
+  align-content: center;
+  height: 100%;
+  min-height: 0;
+  padding: 1rem;
+}
+
+.route-top-card .route-option-main strong {
+  font-size: 1rem;
+}
+
+.route-top-card .route-option-rank {
+  border-radius: 14px;
+  height: 2.35rem;
+  width: 2.35rem;
+}
+
+.route-top-card .route-option-gap {
+  font-size: 0.66rem;
+  padding: 0.18rem 0.46rem;
+}
+
+.route-top-card .route-option-score {
+  font-size: 0.78rem;
+  padding: 0.22rem 0.62rem;
 }
 
 .route-option-list {
@@ -4871,6 +5027,51 @@ code {
     right: 0.75rem;
     top: auto;
     width: auto;
+  }
+
+  .route-top-strip,
+  .route-top-strip.with-side-panel {
+    align-items: stretch;
+    border-radius: 18px;
+    flex-direction: column;
+    gap: 0.45rem;
+    left: 0.75rem;
+    padding: 0.6rem;
+    right: 0.75rem;
+    top: 0.75rem;
+  }
+
+  .compact-planner.planner-collapsed {
+    height: auto;
+    min-height: 0;
+  }
+
+  .route-top-header {
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+    min-width: 0;
+    padding: 0 0.15rem;
+  }
+
+  .route-top-list {
+    gap: 0.55rem;
+    grid-auto-columns: minmax(178px, 78vw);
+    padding-bottom: 0.1rem;
+  }
+
+  .route-top-card {
+    gap: 0.55rem;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    height: auto;
+    min-height: 62px;
+    padding: 0.62rem 0.72rem;
+  }
+
+  .route-top-card .route-option-kicker,
+  .route-top-card .route-option-score,
+  .route-top-card .route-option-gap {
+    font-size: 0.62rem;
   }
 
   .compact-planner {

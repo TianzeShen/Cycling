@@ -898,6 +898,49 @@ const warningCards = computed(() =>
       </button>
     </div>
 
+    <transition name="slide-up">
+      <section
+        v-if="showAnalysis && routeOptionCards.length"
+        class="route-top-strip"
+        :class="{ 'with-side-panel': showSidePanel }"
+        aria-label="Route options"
+      >
+        <div class="route-top-header">
+          <span>Routes</span>
+          <strong>{{ routeOptionCards.length }} options</strong>
+        </div>
+        <div class="route-top-list">
+          <button
+            v-for="route in routeOptionCards"
+            :key="route.id"
+            type="button"
+            class="route-option-card route-top-card"
+            :class="[
+              `route-option-${route.tone}`,
+              { active: route.index === activeRouteIndex },
+            ]"
+            @click="setActiveRoute(route.index)"
+          >
+            <span class="route-option-rank">{{ route.index + 1 }}</span>
+            <span class="route-option-main">
+              <span class="route-option-kicker">
+                {{ route.index === activeRouteIndex ? 'Selected route' : `Option ${route.index + 1}` }}
+              </span>
+              <strong>{{ route.label }}</strong>
+              <span v-if="route.gapCount" class="route-option-gap">
+                {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }}
+              </span>
+            </span>
+            <span class="route-option-metrics">
+              <strong>{{ route.durationLabel }}</strong>
+              <span>{{ route.distanceLabel }}</span>
+              <span class="route-option-score">{{ route.scoreLabel }}</span>
+            </span>
+          </button>
+        </div>
+      </section>
+    </transition>
+
     <div class="map-report-hint" aria-label="How to report a map issue">
       <span>Report a hazard</span>
       <p>Desktop: right-click the map. Mobile: long-press a location.</p>
@@ -914,7 +957,12 @@ const warningCards = computed(() =>
 
     <transition name="panel-slide">
       <aside v-if="showSidePanel" ref="mapSidePanel" class="map-side-panel">
-        <form v-if="showRouteControls" class="glass-panel compact-planner" @submit.prevent="evaluateJourney">
+        <form
+          v-if="showRouteControls"
+          class="glass-panel compact-planner"
+          :class="{ 'planner-collapsed': hasPlannedRoute }"
+          @submit.prevent="evaluateJourney"
+        >
         <div class="planner-header">
           <div>
             <h2>Trip Planner</h2>
@@ -1023,14 +1071,9 @@ const warningCards = computed(() =>
           </div>
         </div>
 
-        <button
-          type="submit"
-          class="primary glow-btn"
-          :class="{ loading: isLoading }"
-          :disabled="isLoading || !isInitialLocationResolved"
-        >
+        <button type="submit" class="primary glow-btn" :class="{ loading: isLoading }" :disabled="isLoading || !isInitialLocationResolved">
           <span v-if="isLoading" class="route-loading-spinner" aria-hidden="true"></span>
-          <span>{{ isLoading ? 'Computing route...' : 'Generate Route' }}</span>
+          <span>{{ isLoading ? 'Computing route...' : hasPlannedRoute ? 'Update Route' : 'Generate Route' }}</span>
         </button>
         <p v-if="isSearching" class="helper-text">Searching addresses...</p>
         <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
@@ -1104,42 +1147,6 @@ const warningCards = computed(() =>
             :distance-label="selectedRouteMetrics.distanceLabel"
             @close="hideAnalysis"
           />
-
-          <div v-if="routeOptionCards.length" class="glass-panel compact-overview">
-            <div class="overview-header">
-              <h3>Routes</h3>
-              <span class="route-count">{{ routeOptionCards.length }} options</span>
-            </div>
-            <div class="route-option-list">
-              <button
-                v-for="route in routeOptionCards"
-                :key="route.id"
-                type="button"
-                class="route-option-card"
-                :class="[
-                  `route-option-${route.tone}`,
-                  { active: route.index === activeRouteIndex },
-                ]"
-                @click="setActiveRoute(route.index)"
-              >
-                <span class="route-option-rank">{{ route.index + 1 }}</span>
-                <span class="route-option-main">
-                  <span class="route-option-kicker">
-                    {{ route.index === activeRouteIndex ? 'Selected route' : `Option ${route.index + 1}` }}
-                  </span>
-                  <strong>{{ route.label }}</strong>
-                  <span v-if="route.gapCount" class="route-option-gap">
-                    {{ route.gapCount }} gap{{ route.gapCount === 1 ? '' : 's' }} detected
-                  </span>
-                </span>
-                <span class="route-option-metrics">
-                  <strong>{{ route.durationLabel }}</strong>
-                  <span>{{ route.distanceLabel }}</span>
-                  <span class="route-option-score">{{ route.scoreLabel }}</span>
-                </span>
-              </button>
-            </div>
-          </div>
 
           <div v-if="feasibilityInsights.length" class="glass-panel compact-overview">
             <div class="overview-header">
