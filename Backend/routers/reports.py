@@ -11,6 +11,7 @@ try:
     from Backend.services.report_service import (
         create_report,
         delete_report,
+        DuplicateReportError,
         list_reports_for_user,
         update_report,
     )
@@ -25,6 +26,7 @@ except ModuleNotFoundError:
     from services.report_service import (
         create_report,
         delete_report,
+        DuplicateReportError,
         list_reports_for_user,
         update_report,
     )
@@ -35,7 +37,10 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 @router.post("", response_model=ReportResponse, summary="Create a new user gap report")
 def create_user_report(payload: ReportCreateRequest) -> ReportResponse:
-    return create_report(payload)
+    try:
+        return create_report(payload)
+    except DuplicateReportError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("", response_model=ReportListResponse, summary="List reports for a user")
@@ -49,6 +54,8 @@ def update_user_report(report_id: str, payload: ReportUpdateRequest) -> ReportRe
         return update_report(report_id, payload)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/{report_id}", response_model=ReportDeleteResponse, summary="Delete a user report")

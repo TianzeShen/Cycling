@@ -127,7 +127,11 @@ class ReportCreateRequest(BaseModel):
     latitude: float = Field(..., description="Reported gap latitude in WGS84.")
     longitude: float = Field(..., description="Reported gap longitude in WGS84.")
     issue_type: str = Field(default="gap", description="Issue type. Current frontend should send `gap`.")
-    description: str | None = Field(default=None, description="Optional user-supplied report details.")
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional user-supplied report details, max 500 characters.",
+    )
 
     @field_validator("user_id")
     @classmethod
@@ -149,6 +153,12 @@ class ReportCreateRequest(BaseModel):
         if not -180 <= value <= 180:
             raise ValueError("Longitude must be between -180 and 180.")
         return value
+
+    @model_validator(mode="after")
+    def validate_report_coordinates_not_default(self) -> "ReportCreateRequest":
+        if self.latitude == 0.0 and self.longitude == 0.0:
+            raise ValueError("Default coordinates (0.000000, 0.000000) are not allowed.")
+        return self
 
 
 class ReportResponse(BaseModel):
@@ -172,7 +182,11 @@ class ReportUpdateRequest(BaseModel):
     latitude: float | None = Field(default=None, description="Updated report latitude in WGS84.")
     longitude: float | None = Field(default=None, description="Updated report longitude in WGS84.")
     issue_type: str | None = Field(default=None, description="Updated issue type.")
-    description: str | None = Field(default=None, description="Updated report details.")
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Updated report details, max 500 characters.",
+    )
 
     @field_validator("user_id")
     @classmethod
@@ -198,6 +212,12 @@ class ReportUpdateRequest(BaseModel):
         if not -180 <= value <= 180:
             raise ValueError("Longitude must be between -180 and 180.")
         return value
+
+    @model_validator(mode="after")
+    def validate_update_coordinates_not_default(self) -> "ReportUpdateRequest":
+        if self.latitude == 0.0 and self.longitude == 0.0:
+            raise ValueError("Default coordinates (0.000000, 0.000000) are not allowed.")
+        return self
 
 
 class ReportDeleteResponse(BaseModel):

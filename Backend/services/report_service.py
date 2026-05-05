@@ -24,6 +24,12 @@ except ModuleNotFoundError:
 
 REPORT_STATUS_PENDING = "pending"
 LANE_GAP_TYPE_USER_REPORTED = "user_reported_gap"
+DUPLICATE_REPORT_WINDOW_MINUTES = 10
+COORDINATE_DUPLICATE_TOLERANCE_METERS = 3.0
+
+
+class DuplicateReportError(ValueError):
+    pass
 
 
 def create_report(payload: ReportCreateRequest) -> ReportResponse:
@@ -116,6 +122,13 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
 
     with get_transaction_connection() as connection:
         ensure_local_uuid_user_exists(connection, payload.user_id)
+        reject_duplicate_report(
+            connection=connection,
+            user_id=payload.user_id,
+            issue_type=stored_issue_type,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+        )
         report_row = (
             connection.execute(text(insert_report_query), params).mappings().first()
         )
@@ -216,6 +229,14 @@ def update_report(report_id: str, payload: ReportUpdateRequest) -> ReportRespons
     }
 
     with get_transaction_connection() as connection:
+        reject_duplicate_report(
+            connection=connection,
+            user_id=payload.user_id,
+            issue_type=new_issue_type,
+            latitude=new_latitude,
+            longitude=new_longitude,
+            exclude_report_id=report_id,
+        )
         updated_row = (
             connection.execute(text(update_report_query), params).mappings().first()
         )
@@ -292,6 +313,55 @@ def find_nearest_segment_id(latitude: float, longitude: float) -> str | None:
 def normalise_issue_type(issue_type: str) -> str:
     key = issue_type.strip().lower()
     return key or "other"
+
+
+def reject_duplicate_report(
+    connection,
+    user_id: str,
+    issue_type: str,
+    latitude: float,
+    longitude: float,
+    exclude_report_id: str | None = None,
+) -> None:
+    duplicate_query = """
+        SELECT
+            report_id::text AS report_id
+        FROM ridesmart.issue_report
+        WHERE user_id = CAST(:user_id AS uuid)
+          AND LOWER(issue_type::text) = LOWER(:issue_type)
+          AND reported_at >= NOW() - make_interval(mins => :window_minutes)
+          AND (
+                :exclude_report_id IS NULL
+                OR report_id <> CAST(:exclude_report_id AS uuid)
+          )
+          AND ST_DWithin(
+                geom::geography,
+                ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography,
+                :distance_tolerance_m
+          )
+        ORDER BY reported_at DESC
+        LIMIT 1
+    """
+    duplicate_row = (
+        connection.execute(
+            text(duplicate_query),
+            {
+                "user_id": user_id,
+                "issue_type": issue_type,
+                "latitude": latitude,
+                "longitude": longitude,
+                "window_minutes": DUPLICATE_REPORT_WINDOW_MINUTES,
+                "distance_tolerance_m": COORDINATE_DUPLICATE_TOLERANCE_METERS,
+                "exclude_report_id": exclude_report_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
+    if duplicate_row is not None:
+        raise DuplicateReportError(
+            "A similar report from this user was already submitted recently."
+        )
 
 
 def ensure_local_uuid_user_exists(connection, user_id: str) -> None:
