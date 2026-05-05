@@ -18,6 +18,8 @@ const isLoadingReports = ref(false)
 const statusMessage = ref('')
 const errorMessage = ref('')
 const issueType = ref('gap')
+const isIssueMenuOpen = ref(false)
+const issueSelectRef = ref(null)
 const reportMain = ref(null)
 const reportMainHeight = ref(0)
 const currentReportTime = ref(new Date())
@@ -56,9 +58,29 @@ function formatReportTime(value) {
 }
 
 const currentReportTimeLabel = computed(() => currentReportTime.value.toLocaleString())
+const selectedIssueType = computed(() => issueTypes.find((type) => type.value === issueType.value) || issueTypes[0])
 
 function formatIssueType(value) {
   return issueTypes.find((type) => type.value === value)?.label || 'Infrastructure Gap'
+}
+
+function toggleIssueMenu() {
+  isIssueMenuOpen.value = !isIssueMenuOpen.value
+}
+
+function closeIssueMenu() {
+  isIssueMenuOpen.value = false
+}
+
+function chooseIssueType(value) {
+  issueType.value = value
+  closeIssueMenu()
+}
+
+function handleIssueSelectFocusOut(event) {
+  if (!issueSelectRef.value?.contains(event.relatedTarget)) {
+    closeIssueMenu()
+  }
 }
 
 function syncLocationFromQuery() {
@@ -198,13 +220,68 @@ onBeforeUnmount(() => {
 
           <div class="rs-field-group">
             <label for="issue-type">Issue Type</label>
-            <div class="rs-select-wrap">
+            <div
+              ref="issueSelectRef"
+              class="rs-select-wrap"
+              :class="{ open: isIssueMenuOpen }"
+              @focusout="handleIssueSelectFocusOut"
+              @keydown.esc.prevent="closeIssueMenu"
+            >
               <span class="rs-dot error"></span>
-              <select id="issue-type" v-model="issueType" class="rs-select-clean">
-                <option v-for="type in issueTypes" :key="type.value" :value="type.value">
-                  {{ type.label }}
-                </option>
-              </select>
+              <button
+                id="issue-type"
+                type="button"
+                class="rs-select-trigger"
+                :aria-expanded="isIssueMenuOpen"
+                aria-haspopup="listbox"
+                @click="toggleIssueMenu"
+              >
+                <span>{{ selectedIssueType.label }}</span>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+
+              <transition name="rs-dropdown">
+                <div v-if="isIssueMenuOpen" class="rs-select-menu" role="listbox" aria-labelledby="issue-type">
+                  <button
+                    v-for="type in issueTypes"
+                    :key="type.value"
+                    type="button"
+                    class="rs-select-option"
+                    :class="{ selected: type.value === issueType }"
+                    role="option"
+                    :aria-selected="type.value === issueType"
+                    @click="chooseIssueType(type.value)"
+                  >
+                    <span>{{ type.label }}</span>
+                    <svg
+                      v-if="type.value === issueType"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
+              </transition>
             </div>
           </div>
 

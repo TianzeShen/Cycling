@@ -52,6 +52,19 @@ function normaliseStatus(status) {
   return String(status || 'submitted').toLowerCase()
 }
 
+function displayReportStatus(status) {
+  const normalisedStatus = normaliseStatus(status)
+
+  if (['pending', 'pending sync', 'submitted'].includes(normalisedStatus)) {
+    return 'Submitted'
+  }
+
+  return normalisedStatus
+    .split(' ')
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(' ')
+}
+
 const submittedReports = computed(() => reports.value.length)
 
 const validatedReports = computed(
@@ -127,7 +140,7 @@ const impactSummary = computed(() => [
 ])
 
 const statusBreakdown = computed(() => [
-  { label: 'Pending', value: pendingReports.value, tone: 'pending' },
+  { label: 'Submitted', value: pendingReports.value, tone: 'pending' },
   { label: 'Validated', value: validatedReports.value, tone: 'validated' },
   { label: 'Resolved', value: resolvedReports.value, tone: 'resolved' },
 ])
@@ -342,7 +355,7 @@ onMounted(loadProfileReports)
         <div v-else-if="recentReports.length" class="profile-report-list">
           <article v-for="report in recentReports" :key="report.report_id" class="profile-report-item">
             <div class="profile-report-main">
-              <strong>{{ report.status || 'submitted' }}</strong>
+              <strong>{{ displayReportStatus(report.status) }}</strong>
               <template v-if="editingReportId === report.report_id">
                 <textarea
                   v-model="editingDescription"
