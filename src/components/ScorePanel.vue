@@ -86,9 +86,9 @@ const warningMessage = computed(() => {
           <span :style="{ color: scoreColor }">{{ displayScore ?? '--' }}</span>
           <span class="score-total">/100</span>
           <span id="score-explanation-tooltip" class="score-tooltip" role="tooltip">
-            This score starts from 100 and adjusts for route distance, bike lane gaps, high-traffic roads,
-            missing cycling infrastructure, and protected bike lanes. Higher scores mean the route is more
-            safer for cycling.
+            This score is based on bike lane quality, traffic volume, speed limits, and route distance,
+            with extra penalties for lane gaps and roads with elevated crash history. Higher scores indicate
+            safer cycling routes.
           </span>
         </div>
       </div>
