@@ -55,8 +55,10 @@ ROUTE_ANALYSIS_MAX_POINTS = 35
 GAP_POINT_THRESHOLD_M = 17.5
 MIN_CONSECUTIVE_GAP_HITS = 1
 GAP_SEGMENT_COOLDOWN_M = 80
-REPORTED_GAP_CANDIDATE_DISTANCE_M = 5.0
-REPORTED_GAP_STRICT_DISTANCE_M = 2.0
+REPORTED_GAP_CANDIDATE_DISTANCE_M = 3.0
+REPORTED_GAP_STRICT_DISTANCE_M = 1.0
+REPORTED_GAP_ROUTE_COOLDOWN_M = 500.0
+LANE_GAP_QUERY_MAX_POINTS = 80
 
 
 class RoutingGenerationError(Exception):
@@ -306,40 +308,29 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             try:
                 route_points = route_data["route_points"]
                 route_distance_km = calculate_route_distance_km(route_points)
-                analysis_route_points, source_indices = compress_route_points_with_source_indices(
+                analysis_route_points, _ = compress_route_points_with_source_indices(
                     route_points,
                     max_points=ROUTE_ANALYSIS_MAX_POINTS,
                 )
-                lane_fetch_start = perf_counter()
-                lane_type_geometries = fetch_lane_type_geometries_near_route(
-                    analysis_route_points
+                gap_fetch_start = perf_counter()
+                route_gap_points = filter_dense_gap_points_along_route(
+                    route_points,
+                    fetch_lane_gap_points_on_route(route_points),
+                    cooldown_m=REPORTED_GAP_ROUTE_COOLDOWN_M,
                 )
-                lane_fetch_ms = (perf_counter() - lane_fetch_start) * 1000
-
-                reported_gap_fetch_start = perf_counter()
-                reported_gap_points = fetch_reported_lane_gaps_on_route(route_points)
-                reported_gap_fetch_ms = (
-                    perf_counter() - reported_gap_fetch_start
-                ) * 1000
+                gap_fetch_ms = (perf_counter() - gap_fetch_start) * 1000
 
                 analysis_segments_start = perf_counter()
-                segments = build_route_segments_from_lane_geometries(
+                segments = build_route_segments_from_gap_points(
                     analysis_route_points,
-                    lane_type_geometries=lane_type_geometries,
+                    gap_points=route_gap_points,
                 )
                 analysis_segments_ms = (perf_counter() - analysis_segments_start) * 1000
 
                 gap_segments_start = perf_counter()
-                option_gap_segments = build_gap_segments_from_analysis_segments(
-                    analysis_segments=segments,
+                option_gap_segments = build_reported_gap_segments_from_route_points(
                     full_route_points=route_points,
-                    source_indices=source_indices,
-                )
-                option_gap_segments.extend(
-                    build_reported_gap_segments_from_route_points(
-                        full_route_points=route_points,
-                        gap_points=reported_gap_points,
-                    )
+                    gap_points=route_gap_points,
                 )
                 gap_segments_ms = (perf_counter() - gap_segments_start) * 1000
 
@@ -372,18 +363,17 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 )
                 route_options.append(option)
                 logger.warning(
-                    "routing.route_option_built index=%d provider=%s points=%d analysis_points=%d segments=%d gap_segments=%d reported_gap_points=%d duration_min=%s score=%s lane_fetch_ms=%.1f reported_gap_fetch_ms=%.1f analysis_segments_ms=%.1f gap_segments_ms=%.1f alerts_only_ms=%.1f feasibility_ms=%.1f build_ms=%.1f",
+                    "routing.route_option_built index=%d provider=%s points=%d analysis_points=%d segments=%d gap_segments=%d matched_gap_points=%d duration_min=%s score=%s gap_fetch_ms=%.1f analysis_segments_ms=%.1f gap_segments_ms=%.1f alerts_only_ms=%.1f feasibility_ms=%.1f build_ms=%.1f",
                     route_index,
                     route_data["provider"],
                     len(route_points),
                     len(analysis_route_points),
                     len(segments),
                     len(option_gap_segments),
-                    len(reported_gap_points),
+                    len(route_gap_points),
                     str(route_data["duration_min"]),
                     str(route_score),
-                    lane_fetch_ms,
-                    reported_gap_fetch_ms,
+                    gap_fetch_ms,
                     analysis_segments_ms,
                     gap_segments_ms,
                     alerts_only_ms,
@@ -1076,30 +1066,34 @@ def interpolate_route_points(request: RoutingRequest) -> list[tuple[float, float
 
 
 def build_route_segments(route_points: list[tuple[float, float]]) -> list[RouteSegment]:
-    lane_type_geometries = fetch_lane_type_geometries_near_route(route_points)
-    return build_route_segments_from_lane_geometries(
+    gap_points = filter_dense_gap_points_along_route(
         route_points,
-        lane_type_geometries=lane_type_geometries,
+        fetch_lane_gap_points_on_route(route_points),
+        cooldown_m=REPORTED_GAP_ROUTE_COOLDOWN_M,
+    )
+    return build_route_segments_from_gap_points(
+        route_points,
+        gap_points=gap_points,
     )
 
 
-def build_route_segments_from_lane_geometries(
+def build_route_segments_from_gap_points(
     route_points: list[tuple[float, float]],
-    lane_type_geometries: dict[str, list[list[tuple[float, float]]]],
+    gap_points: list[tuple[float, float, str]],
 ) -> list[RouteSegment]:
     segments: list[RouteSegment] = []
-    cooldown_remaining_m = 0.0
+    gap_segment_indices = {
+        nearest_segment_index
+        for gap_point in gap_points
+        for nearest_segment_index in [
+            nearest_route_segment_index(route_points, (gap_point[0], gap_point[1]))
+        ]
+        if nearest_segment_index is not None
+    }
     for index in range(len(route_points) - 1):
         start = route_points[index]
         end = route_points[index + 1]
-        segment_length_m = distance_m(start, end)
-        if cooldown_remaining_m > 0:
-            is_gap = False
-            cooldown_remaining_m = max(0.0, cooldown_remaining_m - segment_length_m)
-        else:
-            is_gap = detect_gap(index, start, end, lane_type_geometries)
-            if is_gap:
-                cooldown_remaining_m = GAP_SEGMENT_COOLDOWN_M
+        is_gap = index in gap_segment_indices
         segments.append(
             RouteSegment(
                 coordinates=[
@@ -1151,7 +1145,7 @@ def build_gap_segments_from_analysis_segments(
 
 def build_reported_gap_segments_from_route_points(
     full_route_points: list[tuple[float, float]],
-    gap_points: list[tuple[float, float]],
+    gap_points: list[tuple[float, float, str]],
 ) -> list[RouteSegment]:
     gap_segments: list[RouteSegment] = []
     if len(full_route_points) < 2 or not gap_points:
@@ -1159,7 +1153,10 @@ def build_reported_gap_segments_from_route_points(
 
     used_segment_indices: set[int] = set()
     for gap_point in gap_points:
-        nearest_segment_index = nearest_route_segment_index(full_route_points, gap_point)
+        nearest_segment_index = nearest_route_segment_index(
+            full_route_points,
+            (gap_point[0], gap_point[1]),
+        )
         if nearest_segment_index is None or nearest_segment_index in used_segment_indices:
             continue
         used_segment_indices.add(nearest_segment_index)
@@ -1284,20 +1281,26 @@ def fetch_lane_type_geometries_near_route(
     return lane_geometries
 
 
-def fetch_reported_lane_gaps_on_route(
+def fetch_lane_gap_points_on_route(
     route_points: list[tuple[float, float]],
-) -> list[tuple[float, float]]:
+) -> list[tuple[float, float, str]]:
     if len(route_points) < 2:
         return []
 
-    route_coordinates = ",".join(f"{lng} {lat}" for lat, lng in route_points)
+    query_route_points = (
+        compress_route_points(route_points, max_points=LANE_GAP_QUERY_MAX_POINTS)
+        if len(route_points) > LANE_GAP_QUERY_MAX_POINTS
+        else route_points
+    )
+    route_coordinates = ",".join(f"{lng} {lat}" for lat, lng in query_route_points)
     query = """
         WITH route_line AS (
             SELECT ST_SetSRID(ST_GeomFromText(:route_wkt), 4326) AS geom
         )
         SELECT
             ST_Y(lg.geom) AS lat,
-            ST_X(lg.geom) AS lng
+            ST_X(lg.geom) AS lng,
+            lg.gap_type::text AS gap_type
         FROM ridesmart.lane_gap lg, route_line r
         WHERE lg.geom && ST_Expand(r.geom, 0.001)
           AND ST_DWithin(
@@ -1324,10 +1327,116 @@ def fetch_reported_lane_gaps_on_route(
         return []
 
     return [
-        (float(row["lat"]), float(row["lng"]))
+        (
+            float(row["lat"]),
+            float(row["lng"]),
+            str(row.get("gap_type", "")).strip().lower(),
+        )
         for row in rows
         if row.get("lat") is not None and row.get("lng") is not None
     ]
+
+
+def filter_dense_gap_points_along_route(
+    route_points: list[tuple[float, float]],
+    gap_points: list[tuple[float, float, str]],
+    cooldown_m: float,
+) -> list[tuple[float, float, str]]:
+    if len(route_points) < 2 or len(gap_points) <= 1 or cooldown_m <= 0:
+        return gap_points
+
+    cumulative_distances = [0.0]
+    for index in range(len(route_points) - 1):
+        cumulative_distances.append(
+            cumulative_distances[-1]
+            + distance_m(route_points[index], route_points[index + 1])
+        )
+
+    positioned_points: list[tuple[float, tuple[float, float, str]]] = []
+    for gap_point in gap_points:
+        projected_distance = projected_distance_along_route(
+            route_points,
+            cumulative_distances,
+            (gap_point[0], gap_point[1]),
+        )
+        if projected_distance is not None:
+            positioned_points.append((projected_distance, gap_point))
+
+    if len(positioned_points) <= 1:
+        return [gap_point for _, gap_point in positioned_points] or gap_points
+
+    positioned_points.sort(key=lambda item: item[0])
+    filtered_points: list[tuple[float, float, str]] = []
+    last_kept_distance = float("-inf")
+    for route_distance, gap_point in positioned_points:
+        if gap_point[2] == "user_reported_gap":
+            filtered_points.append(gap_point)
+            continue
+        if route_distance - last_kept_distance < cooldown_m:
+            continue
+        filtered_points.append(gap_point)
+        last_kept_distance = route_distance
+    return filtered_points
+
+
+def projected_distance_along_route(
+    route_points: list[tuple[float, float]],
+    cumulative_distances: list[float],
+    point: tuple[float, float],
+) -> float | None:
+    best_route_distance = None
+    best_distance_to_segment = float("inf")
+
+    for index in range(len(route_points) - 1):
+        segment_start = route_points[index]
+        segment_end = route_points[index + 1]
+        projection_fraction, distance_to_segment_m = project_point_to_segment(
+            point,
+            segment_start,
+            segment_end,
+        )
+        if distance_to_segment_m < best_distance_to_segment:
+            segment_length_m = distance_m(segment_start, segment_end)
+            best_distance_to_segment = distance_to_segment_m
+            best_route_distance = (
+                cumulative_distances[index] + (segment_length_m * projection_fraction)
+            )
+
+    return best_route_distance
+
+
+def project_point_to_segment(
+    point: tuple[float, float],
+    segment_start: tuple[float, float],
+    segment_end: tuple[float, float],
+) -> tuple[float, float]:
+    average_latitude = (segment_start[0] + segment_end[0] + point[0]) / 3
+    lat_scale = 111_320.0
+    lng_scale = 111_320.0 * max(0.1, abs(cos(radians(average_latitude))))
+
+    px = point[1] * lng_scale
+    py = point[0] * lat_scale
+    ax = segment_start[1] * lng_scale
+    ay = segment_start[0] * lat_scale
+    bx = segment_end[1] * lng_scale
+    by = segment_end[0] * lat_scale
+
+    abx = bx - ax
+    aby = by - ay
+    ab_len_sq = abx * abx + aby * aby
+    if ab_len_sq <= 1e-9:
+        dx = px - ax
+        dy = py - ay
+        return 0.0, (dx * dx + dy * dy) ** 0.5
+
+    apx = px - ax
+    apy = py - ay
+    t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab_len_sq))
+    closest_x = ax + t * abx
+    closest_y = ay + t * aby
+    dx = px - closest_x
+    dy = py - closest_y
+    return t, (dx * dx + dy * dy) ** 0.5
 
 
 def detect_gap(
