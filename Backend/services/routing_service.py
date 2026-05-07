@@ -594,6 +594,30 @@ def build_mapbox_route_options(request: RoutingRequest, profile: str) -> dict:
         )
 
     if len(unique_routes) < 3:
+        for waypoint in generate_supplemental_route_variation_waypoints(
+            request,
+            primary_route_points,
+        ):
+            if len(unique_routes) >= 3:
+                break
+            waypoint_route_data = request_mapbox_route_points(
+                [start_point, waypoint, end_point],
+                profile,
+                alternatives=False,
+            )
+            filtered_routes = [
+                route
+                for route in waypoint_route_data["routes"]
+                if not is_waypoint_out_and_back_route(route["route_points"], waypoint)
+            ]
+            append_unique_routes(
+                unique_routes,
+                seen_signatures,
+                filtered_routes,
+                max_routes=3,
+            )
+
+    if len(unique_routes) < 3:
         alternatives_route_data = request_mapbox_route_points(
             [start_point, end_point],
             profile,
@@ -692,14 +716,40 @@ def generate_route_variation_waypoints(
     request: RoutingRequest,
     route_points: list[tuple[float, float]],
 ) -> list[tuple[float, float]]:
+    return generate_lateral_waypoints(
+        request=request,
+        route_points=route_points,
+        anchor_fractions=[0.5],
+        offset_scale=1.0,
+    )
+
+
+def generate_supplemental_route_variation_waypoints(
+    request: RoutingRequest,
+    route_points: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    return generate_lateral_waypoints(
+        request=request,
+        route_points=route_points,
+        anchor_fractions=[0.35, 0.65],
+        offset_scale=0.75,
+    )
+
+
+def generate_lateral_waypoints(
+    request: RoutingRequest,
+    route_points: list[tuple[float, float]],
+    anchor_fractions: list[float],
+    offset_scale: float,
+) -> list[tuple[float, float]]:
     if len(route_points) < 2:
         return []
 
-    midpoint = route_points[len(route_points) // 2]
     start = (request.start_lat, request.start_lng)
     end = (request.end_lat, request.end_lng)
     straight_distance_m = distance_m(start, end)
-    offset_m = min(800.0, max(250.0, straight_distance_m * 0.08))
+    base_offset_m = min(800.0, max(250.0, straight_distance_m * 0.08))
+    offset_m = base_offset_m * max(0.1, offset_scale)
 
     delta_lat = end[0] - start[0]
     delta_lng = end[1] - start[1]
@@ -710,19 +760,37 @@ def generate_route_variation_waypoints(
     unit_perp_lat = -delta_lng / vector_length
     unit_perp_lng = delta_lat / vector_length
 
-    lat_offset_deg = offset_m / 111_320.0
-    lng_scale = 111_320.0 * max(0.1, abs(cos(radians(midpoint[0]))))
-    lng_offset_deg = offset_m / lng_scale
+    waypoints: list[tuple[float, float]] = []
+    seen_waypoints: set[tuple[float, float]] = set()
 
-    left_waypoint = (
-        midpoint[0] + unit_perp_lat * lat_offset_deg,
-        midpoint[1] + unit_perp_lng * lng_offset_deg,
-    )
-    right_waypoint = (
-        midpoint[0] - unit_perp_lat * lat_offset_deg,
-        midpoint[1] - unit_perp_lng * lng_offset_deg,
-    )
-    return [left_waypoint, right_waypoint]
+    for anchor_fraction in anchor_fractions:
+        anchor_index = min(
+            len(route_points) - 1,
+            max(0, round((len(route_points) - 1) * anchor_fraction)),
+        )
+        anchor_point = route_points[anchor_index]
+        lat_offset_deg = offset_m / 111_320.0
+        lng_scale = 111_320.0 * max(0.1, abs(cos(radians(anchor_point[0]))))
+        lng_offset_deg = offset_m / lng_scale
+
+        candidates = [
+            (
+                anchor_point[0] + unit_perp_lat * lat_offset_deg,
+                anchor_point[1] + unit_perp_lng * lng_offset_deg,
+            ),
+            (
+                anchor_point[0] - unit_perp_lat * lat_offset_deg,
+                anchor_point[1] - unit_perp_lng * lng_offset_deg,
+            ),
+        ]
+        for candidate in candidates:
+            signature = (round(candidate[0], 6), round(candidate[1], 6))
+            if signature in seen_waypoints:
+                continue
+            seen_waypoints.add(signature)
+            waypoints.append(candidate)
+
+    return waypoints
 
 
 def is_waypoint_out_and_back_route(
