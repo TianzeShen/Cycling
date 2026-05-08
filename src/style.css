@@ -1123,13 +1123,14 @@ code {
   .route-top-strip.with-side-panel {
     height: auto;
     left: 1rem;
+    min-width: 68rem;
     right: 1rem;
     top: 1rem;
   }
 
   .route-top-list {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    width: 100%;
+    grid-template-columns: repeat(3, minmax(15rem, 1fr));
+    width: auto;
   }
 
   .page-grid,
@@ -1692,6 +1693,7 @@ code {
   position: absolute;
   right: 13rem;
   top: 1.5rem;
+  min-width: 68rem;
   z-index: 9;
 }
 
@@ -1727,20 +1729,26 @@ code {
   display: grid;
   flex: 1;
   gap: 0.65rem;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(15rem, 1fr));
   min-width: 0;
   overflow: visible;
-  padding: 0.05rem 0.2rem 0.25rem;
+  padding: 0.05rem 0.2rem;
 }
 
 .route-top-card {
   align-content: center;
+  gap: 0.65rem;
+  grid-template-columns: 2rem minmax(0, 1fr) minmax(4.75rem, auto);
+  min-width: 0;
   min-height: 76px;
   padding: 0.72rem 0.8rem;
 }
 
 .route-top-card .route-option-main strong {
-  font-size: 0.92rem;
+  font-size: 0.88rem;
+  line-height: 1.12;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .route-top-card .route-option-rank {
@@ -1755,8 +1763,17 @@ code {
 }
 
 .route-top-card .route-option-score {
-  font-size: 0.78rem;
-  padding: 0.22rem 0.62rem;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.route-top-card .route-option-main,
+.route-top-card .route-option-metrics {
+  min-width: 0;
+}
+
+.route-top-card .route-option-metrics {
+  justify-self: end;
 }
 
 .route-option-list {
@@ -1984,6 +2001,13 @@ code {
   margin-top: 0.15rem;
   padding: 0.22rem 0.52rem;
   width: fit-content;
+}
+
+@media (max-width: 1280px) {
+  .route-top-strip,
+  .route-top-strip.with-side-panel {
+    min-width: 68rem;
+  }
 }
 
 .feasibility-list {
@@ -5063,6 +5087,7 @@ code {
     flex-direction: column;
     gap: 0.3rem;
     left: 0.75rem;
+    min-width: 0;
     padding: 0.45rem;
     right: 0.75rem;
     top: 0.75rem;
@@ -5100,6 +5125,7 @@ code {
   .route-top-card {
     gap: 0.42rem;
     grid-template-columns: 1.8rem minmax(0, 1fr);
+    min-width: 0;
     min-height: 58px;
     padding: 0.55rem 0.62rem;
     scroll-snap-align: start;
@@ -5363,5 +5389,210 @@ code {
   .floating-controls button.secondary {
     background: rgba(255, 255, 255, 0.14);
     color: #ffffff;
+  }
+}
+
+/* Desktop zoom guard: fine-pointer devices keep desktop card geometry even when browser zoom shrinks CSS viewport. */
+@media (pointer: fine) {
+  body {
+    overflow-x: auto;
+  }
+
+  .app-shell,
+  .glass-header,
+  .map-view-wrapper {
+    min-width: 1500px;
+  }
+
+  .map-side-panel {
+    bottom: auto;
+    left: 1.5rem;
+    max-height: calc(100% - 3rem);
+    overflow: visible;
+    right: auto;
+    top: 1.5rem;
+    width: 400px;
+    z-index: 10;
+  }
+
+  .route-top-strip,
+  .route-top-strip.with-side-panel {
+    align-items: stretch;
+    border-radius: 20px;
+    flex-direction: row;
+    gap: 0.7rem;
+    height: var(--map-top-control-height);
+    left: calc(400px + 3rem);
+    min-width: 0;
+    padding: 0.65rem;
+    right: 13rem;
+    top: 1.5rem;
+    width: auto;
+    z-index: 9;
+  }
+
+  .route-top-header {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 5rem;
+    padding: 0 0.25rem;
+  }
+
+  .route-top-list {
+    gap: 0.65rem;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, minmax(15rem, 1fr));
+    overflow: visible;
+    padding: 0.05rem 0.2rem;
+    width: auto;
+  }
+
+  .route-top-card {
+    gap: 0.65rem;
+    grid-template-columns: 2rem minmax(0, 1fr) minmax(4.75rem, auto);
+    min-height: 76px;
+    min-width: 0;
+    padding: 0.72rem 0.8rem;
+  }
+
+  .route-top-card .route-option-main strong,
+  .route-top-card .route-option-kicker,
+  .route-top-card .route-option-metrics > span:not(.route-option-score) {
+    display: initial;
+  }
+
+  .route-top-card .route-option-main {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .route-top-card .route-option-metrics {
+    align-items: flex-end;
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: end;
+  }
+
+  .route-top-card .route-option-metrics strong {
+    font-size: 1.08rem;
+    line-height: normal;
+  }
+
+  .route-top-card .route-option-rank {
+    height: 2rem;
+    width: 2rem;
+  }
+
+  .route-top-card .route-option-score {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .route-top-card .route-option-gap {
+    font-size: 0.66rem;
+    padding: 0.18rem 0.46rem;
+  }
+
+  @media (max-width: 1480px) {
+    .route-top-card {
+      gap: 0.5rem;
+      grid-template-columns: 2rem minmax(0, 1fr) minmax(4.25rem, auto);
+      padding: 0.65rem 0.7rem;
+    }
+
+    .route-top-card .route-option-main strong {
+      font-size: 0.82rem;
+    }
+
+    .route-top-card .route-option-metrics strong {
+      font-size: 1rem;
+    }
+
+    .route-top-card .route-option-metrics > span:not(.route-option-score) {
+      display: none;
+    }
+  }
+
+  .floating-controls,
+  .floating-controls.floating-controls-stacked {
+    bottom: auto;
+    flex-direction: row;
+    height: auto;
+    left: auto;
+    right: 1.5rem;
+    top: 1.5rem;
+    width: auto;
+    z-index: 12;
+  }
+
+  .floating-controls.floating-controls-stacked {
+    align-items: stretch;
+    border-radius: 20px;
+    flex-direction: column;
+    gap: 0.35rem;
+    height: var(--map-top-control-height);
+    padding: 0.45rem;
+    width: 10rem;
+  }
+
+  .floating-controls.floating-controls-stacked button {
+    border-radius: 14px;
+    flex: 1;
+    width: 100%;
+  }
+
+  .analysis-stack {
+    bottom: auto;
+    max-height: calc(100vh - 360px);
+    overflow-y: auto;
+    padding: 0;
+    position: relative;
+    right: auto;
+  }
+
+  .analysis-detail-panel,
+  .analysis-stack-expanded .analysis-detail-panel {
+    display: block;
+  }
+
+  .analysis-sheet-toggle {
+    display: none;
+  }
+
+  .home-features,
+  .feature-cards-layout,
+  .home-scroll-container .feature-cards-layout {
+    grid-template-columns: repeat(3, minmax(280px, 1fr));
+  }
+
+  .home-editorial-section,
+  .home-scroll-container .home-editorial-section,
+  .home-impact-section,
+  .home-scroll-container .home-impact-section,
+  .home-insights-section,
+  .home-scroll-container .home-insights-section {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
+  }
+
+  .report-content-grid,
+  .civic-grid,
+  .rs-report-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 0.85fr);
+  }
+
+  .profile-impact-grid,
+  .profile-badge-grid {
+    grid-template-columns: repeat(4, minmax(190px, 1fr));
+  }
+
+  .profile-content-grid {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  }
+
+  .report-location-grid,
+  .coordinate-display,
+  .heatmap-region-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
