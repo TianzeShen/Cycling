@@ -67,6 +67,10 @@ const routeSearchContainer = ref(null)
 const mapSidePanel = ref(null)
 const analysisStack = ref(null)
 const isAnalysisHighlighted = ref(false)
+const isMobileAnalysisExpanded = ref(false)
+const mobileAnalysisDragStartY = ref(null)
+const hasMobileAnalysisDragged = ref(false)
+const shouldIgnoreAnalysisToggleClick = ref(false)
 let analysisHighlightTimer = null
 const searchTimers = {
   start: null,
@@ -381,6 +385,58 @@ async function revealRouteAnalysis() {
   }, 1400)
 }
 
+function isMobileMapViewport() {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 620px)').matches
+}
+
+function handleMobileAnalysisDragStart(event) {
+  if (!isMobileMapViewport()) {
+    return
+  }
+
+  mobileAnalysisDragStartY.value = event.clientY
+  hasMobileAnalysisDragged.value = false
+  shouldIgnoreAnalysisToggleClick.value = false
+  event.currentTarget.setPointerCapture?.(event.pointerId)
+}
+
+function handleMobileAnalysisDragMove(event) {
+  if (mobileAnalysisDragStartY.value === null) {
+    return
+  }
+
+  if (Math.abs(event.clientY - mobileAnalysisDragStartY.value) > 12) {
+    hasMobileAnalysisDragged.value = true
+  }
+}
+
+function finishMobileAnalysisDrag(event) {
+  if (mobileAnalysisDragStartY.value === null) {
+    return
+  }
+
+  const dragDistance = event.clientY - mobileAnalysisDragStartY.value
+
+  if (dragDistance > 48) {
+    isMobileAnalysisExpanded.value = false
+    shouldIgnoreAnalysisToggleClick.value = true
+  } else if (dragDistance < -48) {
+    isMobileAnalysisExpanded.value = true
+    shouldIgnoreAnalysisToggleClick.value = true
+  } else if (hasMobileAnalysisDragged.value) {
+    shouldIgnoreAnalysisToggleClick.value = true
+  }
+
+  mobileAnalysisDragStartY.value = null
+  hasMobileAnalysisDragged.value = false
+  event.currentTarget.releasePointerCapture?.(event.pointerId)
+}
+
+function cancelMobileAnalysisDrag() {
+  mobileAnalysisDragStartY.value = null
+  hasMobileAnalysisDragged.value = false
+}
+
 function insightImpactTone(impact) {
   const value = String(impact || '').toLowerCase()
 
@@ -621,6 +677,7 @@ async function evaluateJourney() {
     isLoading.value = false
 
     if (isAnalysisVisible.value) {
+      isMobileAnalysisExpanded.value = true
       revealRouteAnalysis()
     }
   }
@@ -636,6 +693,7 @@ function showRouteMode() {
 
 function hideAnalysis() {
   isAnalysisVisible.value = false
+  isMobileAnalysisExpanded.value = false
 }
 
 function clearRoutePlan() {
@@ -653,8 +711,18 @@ function clearRoutePlan() {
   destinationSuggestions.value = []
   activeSearchField.value = null
   isAnalysisVisible.value = false
+  isMobileAnalysisExpanded.value = false
   errorMessage.value = ''
   mode.value = mapModes.routeInput
+}
+
+function toggleMobileAnalysis() {
+  if (shouldIgnoreAnalysisToggleClick.value) {
+    shouldIgnoreAnalysisToggleClick.value = false
+    return
+  }
+
+  isMobileAnalysisExpanded.value = !isMobileAnalysisExpanded.value
 }
 
 async function showHeatmapPanelMode() {
@@ -1157,8 +1225,26 @@ const warningCards = computed(() =>
           v-if="showAnalysis"
           ref="analysisStack"
           class="analysis-stack"
-          :class="{ 'analysis-stack-highlight': isAnalysisHighlighted }"
+          :class="{
+            'analysis-stack-highlight': isAnalysisHighlighted,
+            'analysis-stack-expanded': isMobileAnalysisExpanded,
+          }"
         >
+          <button
+            type="button"
+            class="analysis-sheet-toggle"
+            :aria-expanded="isMobileAnalysisExpanded"
+            :aria-label="isMobileAnalysisExpanded ? 'Drag down to minimise route details' : 'Drag up to show route details'"
+            @pointerdown="handleMobileAnalysisDragStart"
+            @pointermove="handleMobileAnalysisDragMove"
+            @pointerup="finishMobileAnalysisDrag"
+            @pointercancel="cancelMobileAnalysisDrag"
+            @click="toggleMobileAnalysis"
+          >
+            <span class="analysis-sheet-handle" aria-hidden="true"></span>
+            <span>{{ isMobileAnalysisExpanded ? 'Swipe down' : 'Details' }}</span>
+          </button>
+
           <ScorePanel
             v-if="result"
             :result="result"
@@ -1167,7 +1253,7 @@ const warningCards = computed(() =>
             @close="hideAnalysis"
           />
 
-          <div v-if="feasibilityInsights.length" class="glass-panel compact-overview">
+          <div v-if="feasibilityInsights.length" class="glass-panel compact-overview analysis-detail-panel">
             <div class="overview-header">
               <h3>Feasibility Insights</h3>
             </div>
@@ -1190,7 +1276,7 @@ const warningCards = computed(() =>
             </div>
           </div>
 
-          <div class="glass-panel compact-overview">
+          <div class="glass-panel compact-overview analysis-detail-panel">
             <div class="overview-header">
               <h3>Warnings</h3>
             </div>
