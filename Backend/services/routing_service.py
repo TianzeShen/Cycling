@@ -57,6 +57,7 @@ MIN_CONSECUTIVE_GAP_HITS = 1
 GAP_SEGMENT_COOLDOWN_M = 80
 REPORTED_GAP_CANDIDATE_DISTANCE_M = 3.0
 REPORTED_GAP_STRICT_DISTANCE_M = 1.0
+USER_REPORTED_GAP_STRICT_DISTANCE_M = 2.0
 REPORTED_GAP_ROUTE_COOLDOWN_M = 500.0
 LANE_GAP_QUERY_MAX_POINTS = 80
 
@@ -1376,10 +1377,23 @@ def fetch_lane_gap_points_on_route(
                 r.geom::geography,
                 :candidate_distance_m
           )
-          AND ST_Distance(
-                lg.geom::geography,
-                r.geom::geography
-          ) <= :strict_distance_m
+          AND (
+                (
+                    lg.gap_type::text = 'user_reported_gap'
+                    AND ST_Distance(
+                        lg.geom::geography,
+                        r.geom::geography
+                    ) <= :user_reported_strict_distance_m
+                )
+                OR
+                (
+                    lg.gap_type::text <> 'user_reported_gap'
+                    AND ST_Distance(
+                        lg.geom::geography,
+                        r.geom::geography
+                    ) <= :strict_distance_m
+                )
+          )
     """
 
     try:
@@ -1389,6 +1403,7 @@ def fetch_lane_gap_points_on_route(
                 "route_wkt": f"LINESTRING({route_coordinates})",
                 "candidate_distance_m": REPORTED_GAP_CANDIDATE_DISTANCE_M,
                 "strict_distance_m": REPORTED_GAP_STRICT_DISTANCE_M,
+                "user_reported_strict_distance_m": USER_REPORTED_GAP_STRICT_DISTANCE_M,
             },
         )
     except Exception:
