@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 try:
     from Backend.database import fetch_all, fetch_scalar
     from Backend.schemas import (
+        RoutingGapPoint,
         RouteSegment,
         RoutingAlert,
         RoutingOption,
@@ -20,6 +21,7 @@ try:
 except ModuleNotFoundError:
     from database import fetch_all, fetch_scalar
     from schemas import (
+        RoutingGapPoint,
         RouteSegment,
         RoutingAlert,
         RoutingOption,
@@ -55,7 +57,6 @@ ROUTE_ANALYSIS_MAX_POINTS = 35
 GAP_POINT_THRESHOLD_M = 17.5
 MIN_CONSECUTIVE_GAP_HITS = 1
 GAP_SEGMENT_COOLDOWN_M = 80
-REPORTED_GAP_CANDIDATE_DISTANCE_M = 3.0
 REPORTED_GAP_STRICT_DISTANCE_M = 1.0
 USER_REPORTED_GAP_STRICT_DISTANCE_M = 3.0
 REPORTED_GAP_ROUTE_COOLDOWN_M = 500.0
@@ -292,6 +293,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
     route_geometry = None
     route_segments: list[RouteSegment] = []
     gap_segments: list[RouteSegment] = []
+    gap_points: list[RoutingGapPoint] = []
     alerts: list[RoutingAlert] = []
     distance_km = None
     duration_min = None
@@ -320,6 +322,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     cooldown_m=REPORTED_GAP_ROUTE_COOLDOWN_M,
                 )
                 gap_fetch_ms = (perf_counter() - gap_fetch_start) * 1000
+                option_gap_points = build_gap_point_models(route_gap_points)
 
                 analysis_segments_start = perf_counter()
                 segments = build_route_segments_from_gap_points(
@@ -343,7 +346,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 route_feasibility = evaluate_feasibility_for_route_points(
                     route_points,
                     distance_km_override=route_distance_km,
-                    gap_count_override=len(option_gap_segments),
+                    gap_count_override=len(option_gap_points),
                     context_route_points=analysis_route_points,
                 )
                 feasibility_ms = (perf_counter() - feasibility_start) * 1000
@@ -354,6 +357,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     route_geometry=route_points_to_geojson(route_points),
                     route_segments=segments,
                     gap_segments=option_gap_segments,
+                    gap_points=option_gap_points,
                     alerts=option_alerts,
                     distance_km=route_distance_km,
                     duration_min=route_data["duration_min"],
@@ -371,7 +375,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                     len(analysis_route_points),
                     len(segments),
                     len(option_gap_segments),
-                    len(route_gap_points),
+                    len(option_gap_points),
                     str(route_data["duration_min"]),
                     str(route_score),
                     gap_fetch_ms,
@@ -401,6 +405,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             route_geometry = primary_option.route_geometry
             route_segments = primary_option.route_segments
             gap_segments = primary_option.gap_segments
+            gap_points = primary_option.gap_points
             alerts = primary_option.alerts
             distance_km = primary_option.distance_km
             duration_min = primary_option.duration_min
@@ -446,6 +451,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
             route_geometry = route_geometry_from_segments(route_segments)
             distance_km = calculate_route_distance_from_segments(route_segments)
         gap_segments = [segment for segment in route_segments if segment.is_gap]
+        gap_points = []
 
         try:
             alerts_start = perf_counter()
@@ -467,6 +473,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
                 route_geometry=route_geometry,
                 route_segments=route_segments,
                 gap_segments=gap_segments,
+                gap_points=gap_points,
                 alerts=alerts,
                 distance_km=distance_km,
                 duration_min=duration_min,
@@ -490,6 +497,7 @@ def recommend_route(request: RoutingRequest) -> RoutingResponse:
         route_geometry=route_geometry,
         route_segments=route_segments,
         gap_segments=gap_segments,
+        gap_points=gap_points,
         alerts=alerts,
         alerts_status_message=alerts_status_message,
         distance_km=distance_km,
@@ -1245,6 +1253,18 @@ def build_reported_gap_segments_from_route_points(
     return gap_segments
 
 
+def build_gap_point_models(
+    gap_points: list[tuple[float, float, str]],
+) -> list[RoutingGapPoint]:
+    return [
+        RoutingGapPoint(
+            location=[round(lat, 6), round(lng, 6)],
+            gap_type=gap_type,
+        )
+        for lat, lng, gap_type in gap_points
+    ]
+
+
 def route_points_to_geojson(route_points: list[tuple[float, float]]) -> dict | None:
     if len(route_points) < 2:
         return None
@@ -1372,26 +1392,23 @@ def fetch_lane_gap_points_on_route(
             lg.gap_type::text AS gap_type
         FROM ridesmart.lane_gap lg, route_line r
         WHERE lg.geom && ST_Expand(r.geom, 0.001)
-          AND ST_DWithin(
-                lg.geom::geography,
-                r.geom::geography,
-                :candidate_distance_m
-          )
           AND (
                 (
                     lg.gap_type::text = 'user_reported_gap'
-                    AND ST_Distance(
+                    AND ST_DWithin(
                         lg.geom::geography,
-                        r.geom::geography
-                    ) <= :user_reported_strict_distance_m
+                        r.geom::geography,
+                        :user_reported_strict_distance_m
+                    )
                 )
                 OR
                 (
                     lg.gap_type::text <> 'user_reported_gap'
-                    AND ST_Distance(
+                    AND ST_DWithin(
                         lg.geom::geography,
-                        r.geom::geography
-                    ) <= :strict_distance_m
+                        r.geom::geography,
+                        :strict_distance_m
+                    )
                 )
           )
     """
@@ -1401,7 +1418,6 @@ def fetch_lane_gap_points_on_route(
             query,
             {
                 "route_wkt": f"LINESTRING({route_coordinates})",
-                "candidate_distance_m": REPORTED_GAP_CANDIDATE_DISTANCE_M,
                 "strict_distance_m": REPORTED_GAP_STRICT_DISTANCE_M,
                 "user_reported_strict_distance_m": USER_REPORTED_GAP_STRICT_DISTANCE_M,
             },

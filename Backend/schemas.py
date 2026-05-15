@@ -74,12 +74,21 @@ class RoutingAlert(BaseModel):
     message: str
 
 
+class RoutingGapPoint(BaseModel):
+    location: list[float] = Field(
+        ...,
+        description="Gap point location in [latitude, longitude] format.",
+    )
+    gap_type: str
+
+
 class RoutingOption(BaseModel):
     label: str
     provider: str
     route_geometry: dict | None = None
     route_segments: list[RouteSegment] = Field(default_factory=list)
     gap_segments: list[RouteSegment] = Field(default_factory=list)
+    gap_points: list[RoutingGapPoint] = Field(default_factory=list)
     alerts: list[RoutingAlert] = Field(default_factory=list)
     distance_km: float | None = None
     duration_min: float | None = None
@@ -93,6 +102,7 @@ class RoutingResponse(BaseModel):
     route_geometry: dict | None = None
     route_segments: list[RouteSegment] = Field(default_factory=list)
     gap_segments: list[RouteSegment] = Field(default_factory=list)
+    gap_points: list[RoutingGapPoint] = Field(default_factory=list)
     alerts: list[RoutingAlert] = Field(default_factory=list)
     alerts_status_message: str | None = None
     distance_km: float | None = None
