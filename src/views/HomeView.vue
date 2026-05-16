@@ -3,7 +3,7 @@
     <section class="hero-parallax">
       <div class="hero-overlay"></div>
       <div class="hero-content">
-        <span class="eyebrow-light">RideSmart Melbourne</span>
+        <span class="eyebrow-light">RydeSmrt Melbourne</span>
         <h1>Ride the City,<br />Smarter.</h1>
         <p>
           Intelligent routing, live safety heatmaps, and community-driven reports. Discover the
@@ -26,7 +26,7 @@
       <section class="home-about-section">
         <div class="about-grid">
           <div class="about-title">
-            <span class="eyebrow">Why RideSmart</span>
+            <span class="eyebrow">Why RydeSmrt</span>
             <h2>Practical support for riders who want clear safety signals.</h2>
           </div>
           <div class="about-description">
@@ -36,7 +36,7 @@
               feel uncertain.
             </p>
             <p>
-              RideSmart brings infrastructure data, route conditions, and community reporting into
+              RydeSmrt brings infrastructure data, route conditions, and community reporting into
               one web experience so riders can understand a route before committing to it.
             </p>
           </div>
@@ -143,7 +143,7 @@
             <span class="eyebrow-light">City-Scale Intelligence</span>
             <h2>Powered by real urban data.</h2>
             <p>
-              RideSmart does more than show the shortest path. It combines infrastructure signals,
+              RydeSmrt does more than show the shortest path. It combines infrastructure signals,
               traffic exposure, Census context, and rider reports to evaluate whether a cycling
               route feels practical in real city conditions.
             </p>
@@ -178,14 +178,14 @@
     <footer class="home-footer-pro">
       <div class="footer-container">
         <div class="footer-brand">
-          <strong>RideSmart</strong>
+          <strong>RydeSmrt</strong>
           <span class="footer-divider">|</span>
-          <span class="brand-group">Presented by Oractron · 2026</span>
+          <span class="brand-group">Presented by Auracron · 2026</span>
         </div>
 
         <div class="footer-legal">
           <p>
-            © 2026 Oractron. All rights reserved. Contains data sourced from the ABS Census, VicRoads, and
+            © 2026 Auracron. All rights reserved. Contains data sourced from the ABS Census, VicRoads, and
             OpenStreetMap, licensed under CC BY 4.0.
           </p>
           <p>

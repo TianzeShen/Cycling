@@ -16,7 +16,7 @@ const HELP_SEEN_STORAGE_KEY_PREFIX = 'ridesmart-help-shown'
 
 const helpContentByRoute = {
   home: {
-    title: 'Welcome to RideSmart',
+    title: 'Welcome to RydeSmrt',
     summary: 'Start here to understand what the app does before planning a ride.',
     steps: [
       {
@@ -25,7 +25,7 @@ const helpContentByRoute = {
       },
       {
         title: 'Understand the intelligence signals',
-        body: 'The overview explains safety scoring, risk segments, local reports, heatmaps, and the data sources behind RideSmart.',
+        body: 'The overview explains safety scoring, risk segments, local reports, heatmaps, and the data sources behind RydeSmrt.',
       },
       {
         title: 'Read the data disclaimer',
@@ -43,7 +43,7 @@ const helpContentByRoute = {
       },
       {
         title: 'Choose a destination',
-        body: 'Enter your destination and select a suggestion so RideSmart can use exact coordinates for routing.',
+        body: 'Enter your destination and select a suggestion so RydeSmrt can use exact coordinates for routing.',
       },
       {
         title: 'Generate and compare routes',
@@ -77,7 +77,7 @@ const helpContentByRoute = {
       },
       {
         title: 'Broadcast the report',
-        body: 'Select Broadcast Report to submit it with your local RideSmart user ID. The sidebar shows your identity and contribution log.',
+        body: 'Select Broadcast Report to submit it with your local RydeSmrt user ID. The sidebar shows your identity and contribution log.',
       },
     ],
   },
@@ -170,7 +170,7 @@ watch(
   <div class="app-shell">
     <header class="glass-header">
       <nav class="header-nav" aria-label="Primary navigation">
-        <RouterLink class="brand-logo" to="/">Ride<span>Smart</span></RouterLink>
+        <RouterLink class="brand-logo" to="/">Ryde<span>Smrt</span></RouterLink>
         <RouterLink v-for="item in navItems" :key="item.to" :to="item.to">
           {{ item.label }}
         </RouterLink>

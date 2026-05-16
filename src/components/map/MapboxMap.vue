@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { pointToFeature, segmentToGeoJson, toMapboxLngLat } from '../../utils/mapCoordinates'
+import { pointToFeature, toMapboxLngLat } from '../../utils/mapCoordinates'
 
 const props = defineProps({
   mode: {
@@ -21,7 +21,7 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
-  gapSegments: {
+  gapPoints: {
     type: Array,
     default: () => [],
   },
@@ -79,6 +79,7 @@ const MELBOURNE_BOUNDS = [
   [145.6, -37.4],
 ]
 const heatmapRegionBounds = new WeakMap()
+const GAP_MARKER_IMAGE_ID = 'gap-marker'
 
 const hasToken = computed(() => Boolean(token) && token.startsWith('pk.'))
 
@@ -211,17 +212,45 @@ function getAlternativeRouteCollection() {
   }
 }
 
-function getGapRouteCollection() {
-  const segments = props.gapSegments.length
-    ? props.gapSegments
-    : props.routeGeometry
-      ? []
-      : props.routeSegments.filter((segment) => segment.is_gap || segment.isGap)
-
+function getGapPointCollection() {
   return {
     type: 'FeatureCollection',
-    features: segments.map(segmentToGeoJson),
+    features: props.gapPoints
+      .filter((gap) => Array.isArray(gap?.location))
+      .map((gap) =>
+        pointToFeature(gap.location, {
+          gapType: gap.gap_type || '',
+        }),
+      ),
   }
+}
+
+function addGapMarkerImage() {
+  return new Promise((resolve, reject) => {
+    if (map.value.hasImage(GAP_MARKER_IMAGE_ID)) {
+      resolve()
+      return
+    }
+
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+        <path d="M19 2 L36 19 L19 36 L2 19 Z" fill="#f59e0b"/>
+        <path d="M19 2 L36 19 L19 36 L2 19 Z" fill="none" stroke="#ffffff" stroke-width="4"/>
+        <rect x="17" y="10" width="4" height="13" rx="2" fill="#ffffff"/>
+        <circle cx="19" cy="28" r="2.5" fill="#ffffff"/>
+      </svg>
+    `
+    const image = new Image(38, 38)
+
+    image.onload = () => {
+      if (!map.value.hasImage(GAP_MARKER_IMAGE_ID)) {
+        map.value.addImage(GAP_MARKER_IMAGE_ID, image)
+      }
+      resolve()
+    }
+    image.onerror = reject
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  })
 }
 
 function getReportCollection() {
@@ -368,18 +397,6 @@ function getVisibleReportCollection() {
   }
 }
 
-function getAlertCollection() {
-  return {
-    type: 'FeatureCollection',
-    features: props.alerts.map((alert, index) =>
-      pointToFeature(alert.location || [-37.815 + index * 0.004, 144.965 + index * 0.003], {
-        title: alert.title || alert.message,
-        detail: Array.isArray(alert.location) ? alert.location.join(', ') : alert.location || '',
-      }),
-    ),
-  }
-}
-
 function setSourceData(id, data) {
   const source = map.value?.getSource(id)
 
@@ -401,7 +418,7 @@ function updateRouteData() {
 
   setSourceData('route-alternatives', getAlternativeRouteCollection())
   setSourceData('route-main', getMainRouteCollection())
-  setSourceData('route-gaps', getGapRouteCollection())
+  setSourceData('route-gaps', getGapPointCollection())
 }
 
 function escapeHtml(value) {
@@ -450,7 +467,6 @@ function updateAlertData() {
     return
   }
 
-  setSourceData('route-alerts', getAlertCollection())
 }
 
 function collectRouteLngLatCoordinates() {
@@ -464,11 +480,9 @@ function collectRouteLngLatCoordinates() {
     return props.routeGeometry.coordinates.filter((coordinate) => Array.isArray(coordinate) && coordinate.length >= 2)
   }
 
-  const segments = props.gapSegments
-
-  return segments.flatMap((segment) =>
-    (segment.coordinates || []).map(toMapboxLngLat).filter((coordinate) => coordinate && coordinate.length >= 2),
-  )
+  return props.gapPoints
+    .map((gap) => toMapboxLngLat(gap.location))
+    .filter((coordinate) => coordinate && coordinate.length >= 2)
 }
 
 function fitToRoute() {
@@ -512,10 +526,11 @@ function updateLayerVisibility() {
   setLayerVisibility('route-alternative-lines', !isHeatmap)
   setLayerVisibility('route-main-casing', !isHeatmap)
   setLayerVisibility('route-segment-lines', !isHeatmap)
-  setLayerVisibility('route-gap-lines', !isHeatmap)
-  setLayerVisibility('route-gap-lines-dash', !isHeatmap)
+  setLayerVisibility('route-gap-halo', !isHeatmap)
+  setLayerVisibility('route-gap-points', !isHeatmap)
   setLayerVisibility('route-points', !isHeatmap)
-  setLayerVisibility('route-alerts', !isHeatmap)
+  setLayerVisibility('route-end-marker', !isHeatmap)
+  setLayerVisibility('route-end-core', !isHeatmap)
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
   setLayerVisibility('sa2-heatmap-lines', isHeatmap)
   setLayerVisibility('community-heatmap', isHeatmap)
@@ -593,7 +608,7 @@ function addMapSources() {
 
   map.value.addSource('route-gaps', {
     type: 'geojson',
-    data: getGapRouteCollection(),
+    data: getGapPointCollection(),
     tolerance: 0.8,
   })
 
@@ -606,11 +621,6 @@ function addMapSources() {
     type: 'geojson',
     data: getSa2HeatmapCollection(),
     tolerance: 1.2,
-  })
-
-  map.value.addSource('route-alerts', {
-    type: 'geojson',
-    data: getAlertCollection(),
   })
 
   map.value.addSource('community-reports', {
@@ -696,34 +706,28 @@ function addMapLayers() {
   })
 
   map.value.addLayer({
-    id: 'route-gap-lines',
-    type: 'line',
+    id: 'route-gap-halo',
+    type: 'circle',
     source: 'route-gaps',
     paint: {
-      'line-width': 10,
-      'line-opacity': 0.98,
-      'line-color': '#ef4444',
-      'line-blur': 0.4,
-    },
-    layout: {
-      'line-cap': 'round',
-      'line-join': 'round',
+      'circle-radius': 18,
+      'circle-color': '#f59e0b',
+      'circle-opacity': 0,
     },
   })
 
   map.value.addLayer({
-    id: 'route-gap-lines-dash',
-    type: 'line',
+    id: 'route-gap-points',
+    type: 'symbol',
     source: 'route-gaps',
-    paint: {
-      'line-width': 6,
-      'line-opacity': 1,
-      'line-color': '#fff5f5',
-      'line-dasharray': [1.2, 1.2],
-    },
     layout: {
-      'line-cap': 'round',
-      'line-join': 'round',
+      'icon-image': GAP_MARKER_IMAGE_ID,
+      'icon-size': 1,
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+    paint: {
+      'icon-opacity': 1,
     },
   })
 
@@ -731,27 +735,36 @@ function addMapLayers() {
     id: 'route-points',
     type: 'circle',
     source: 'route-points',
+    filter: ['==', ['get', 'kind'], 'start'],
     paint: {
-      'circle-radius': 8,
-      'circle-color': ['match', ['get', 'kind'], 'start', '#12a594', 'end', '#e85d5d', '#30413d'],
-      'circle-stroke-color': '#ffffff',
-      'circle-stroke-width': 3,
+      'circle-radius': 10,
+      'circle-color': '#ffffff',
+      'circle-stroke-color': '#30413d',
+      'circle-stroke-width': 2,
     },
   })
 
   map.value.addLayer({
-    id: 'route-alerts',
-    type: 'symbol',
-    source: 'route-alerts',
-    layout: {
-      'text-field': '!',
-      'text-size': 16,
-      'text-allow-overlap': true,
-    },
+    id: 'route-end-marker',
+    type: 'circle',
+    source: 'route-points',
+    filter: ['==', ['get', 'kind'], 'end'],
     paint: {
-      'text-color': '#ffffff',
-      'text-halo-color': '#e85d5d',
-      'text-halo-width': 10,
+      'circle-radius': 10,
+      'circle-color': '#ffffff',
+      'circle-stroke-color': '#30413d',
+      'circle-stroke-width': 2,
+    },
+  })
+
+  map.value.addLayer({
+    id: 'route-end-core',
+    type: 'circle',
+    source: 'route-points',
+    filter: ['==', ['get', 'kind'], 'end'],
+    paint: {
+      'circle-radius': 4,
+      'circle-color': '#111827',
     },
   })
 
@@ -1004,8 +1017,9 @@ onMounted(() => {
 
   addMapControls()
 
-  map.value.on('load', () => {
+  map.value.on('load', async () => {
     addMapSources()
+    await addGapMarkerImage()
     addMapLayers()
     mapReady.value = true
     updateLayers()
@@ -1124,7 +1138,7 @@ watch(
 )
 
 watch(
-  () => props.gapSegments,
+  () => props.gapPoints,
   () => {
     updateRouteData()
     fitToRoute()

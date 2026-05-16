@@ -88,8 +88,8 @@ const routeOptions = ref(
 )
 const activeRouteIndex = ref(shouldRestoreMapState ? Number(savedMapState.activeRouteIndex) || 0 : 0)
 const routeGeometry = ref(shouldRestoreMapState ? savedMapState.routeGeometry || null : null)
-const gapSegments = ref(
-  shouldRestoreMapState && Array.isArray(savedMapState.gapSegments) ? savedMapState.gapSegments : [],
+const gapPoints = ref(
+  shouldRestoreMapState && Array.isArray(savedMapState.gapPoints) ? savedMapState.gapPoints : [],
 )
 const routeSegments = ref(
   shouldRestoreMapState && Array.isArray(savedMapState.routeSegments) ? savedMapState.routeSegments : [],
@@ -144,19 +144,24 @@ function formatAlertLocation(location) {
 
 function normaliseRouteAlerts(routeResponse) {
   const alerts = routeResponse.alerts || []
-  const routeGapSegments = Array.isArray(routeResponse.gap_segments) ? routeResponse.gap_segments : []
+  const routeGapPoints = Array.isArray(routeResponse.gap_points) ? routeResponse.gap_points : []
   const legacyGapSegments = (routeResponse.route_segments || []).filter((segment) => segment.is_gap)
-  const alertGapSegments = routeResponse.route_geometry || routeGapSegments.length ? routeGapSegments : legacyGapSegments
-  const gapCount = alertGapSegments.length
+  const alertGaps = routeGapPoints.length
+    ? routeGapPoints
+    : routeResponse.route_geometry
+      ? []
+      : legacyGapSegments
+  const gapCount = alertGaps.length
 
   if (alerts.length) {
     return alerts
   }
 
   if (gapCount > 0) {
-    return alertGapSegments.map((segment, index) => ({
-      level: segment.risk_level || 'Red',
-      location: getSegmentMidpoint(segment),
+    return alertGaps.map((gap, index) => ({
+      level: gap.risk_level || 'Red',
+      location: gap.location || getSegmentMidpoint(gap),
+      kind: 'gap_point',
       message:
         gapCount === 1
           ? '1 infrastructure gap detected along the route.'
@@ -240,10 +245,10 @@ function normaliseRouteOptions(routeResponse) {
         id: `${option.provider || 'route'}-${option.label || index}-${index}`,
         label: option.label || `Route ${index + 1}`,
         route_geometry: option.route_geometry || (index === 0 ? routeResponse.route_geometry : null) || null,
-        gap_segments: Array.isArray(option.gap_segments)
-          ? option.gap_segments
-          : index === 0 && Array.isArray(routeResponse.gap_segments)
-            ? routeResponse.gap_segments
+        gap_points: Array.isArray(option.gap_points)
+          ? option.gap_points
+          : index === 0 && Array.isArray(routeResponse.gap_points)
+            ? routeResponse.gap_points
             : [],
         route_segments: Array.isArray(option.route_segments)
           ? option.route_segments
@@ -275,7 +280,7 @@ function normaliseRouteOptions(routeResponse) {
 
   if (
     routeResponse?.route_geometry ||
-    (Array.isArray(routeResponse?.gap_segments) && routeResponse.gap_segments.length) ||
+    (Array.isArray(routeResponse?.gap_points) && routeResponse.gap_points.length) ||
     (Array.isArray(routeResponse?.route_segments) && routeResponse.route_segments.length)
   ) {
     const route = {
@@ -283,7 +288,7 @@ function normaliseRouteOptions(routeResponse) {
       label: 'Recommended',
       provider: routeResponse.provider || 'mapbox',
       route_geometry: routeResponse.route_geometry || null,
-      gap_segments: Array.isArray(routeResponse.gap_segments) ? routeResponse.gap_segments : [],
+      gap_points: Array.isArray(routeResponse.gap_points) ? routeResponse.gap_points : [],
       route_segments: Array.isArray(routeResponse.route_segments) ? routeResponse.route_segments : [],
       alerts: routeResponse.alerts || [],
       score: resolveRouteScore(routeResponse),
@@ -361,7 +366,7 @@ function setActiveRoute(index) {
   const route = routeOptions.value[index]
   result.value = route
   routeGeometry.value = route.route_geometry || null
-  gapSegments.value = route.gap_segments || []
+  gapPoints.value = route.gap_points || []
   routeSegments.value = route.route_segments || []
   routeAlerts.value = normaliseRouteAlerts(route)
 }
@@ -562,7 +567,7 @@ const hasPlannedRoute = computed(() =>
     result.value ||
       routeOptions.value.length ||
       routeGeometry.value ||
-      gapSegments.value.length ||
+      gapPoints.value.length ||
       routeSegments.value.length ||
       routeAlerts.value.length,
   ),
@@ -587,7 +592,7 @@ function saveMapState() {
     routeOptions: routeOptions.value,
     activeRouteIndex: activeRouteIndex.value,
     routeGeometry: routeGeometry.value,
-    gapSegments: gapSegments.value,
+    gapPoints: gapPoints.value,
     routeSegments: routeSegments.value,
     isSidePanelVisible: isSidePanelVisible.value,
     showReportMarkers: showReportMarkers.value,
@@ -653,7 +658,7 @@ async function evaluateJourney() {
     } else {
       routeAlerts.value = []
       routeGeometry.value = null
-      gapSegments.value = []
+      gapPoints.value = []
       routeSegments.value = []
     }
   } catch (error) {
@@ -663,15 +668,15 @@ async function evaluateJourney() {
     routeAlerts.value = []
     routeAlertsStatusMessage.value = ''
     routeGeometry.value = null
-    gapSegments.value = []
+    gapPoints.value = []
     routeSegments.value = []
     errorMessage.value = formatBackendError(error, 'Route generation failed for the selected points.')
   } finally {
     isAnalysisVisible.value = Boolean(
-      result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length,
+      result.value || routeGeometry.value || gapPoints.value.length || routeSegments.value.length,
     )
     mode.value =
-      result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length
+      result.value || routeGeometry.value || gapPoints.value.length || routeSegments.value.length
         ? mapModes.routeAnalysis
         : mapModes.routeInput
     isLoading.value = false
@@ -685,7 +690,7 @@ async function evaluateJourney() {
 
 function showRouteMode() {
   mode.value =
-    result.value || routeGeometry.value || gapSegments.value.length || routeSegments.value.length
+    result.value || routeGeometry.value || gapPoints.value.length || routeSegments.value.length
       ? mapModes.routeAnalysis
       : mapModes.routeInput
   isSidePanelVisible.value = true
@@ -703,7 +708,7 @@ function clearRoutePlan() {
   routeAlerts.value = []
   routeAlertsStatusMessage.value = ''
   routeGeometry.value = null
-  gapSegments.value = []
+  gapPoints.value = []
   routeSegments.value = []
   destination.value = ''
   endCoordinate.value = null
@@ -852,7 +857,7 @@ watch(
     routeOptions,
     activeRouteIndex,
     routeGeometry,
-    gapSegments,
+    gapPoints,
     routeSegments,
     isSidePanelVisible,
     showReportMarkers,
@@ -876,7 +881,7 @@ onBeforeUnmount(() => {
 })
 
 const displayedGapCount = computed(() =>
-  gapSegments.value.length || (routeGeometry.value ? 0 : routeSegments.value.filter((segment) => segment.is_gap).length),
+  gapPoints.value.length || (routeGeometry.value ? 0 : routeSegments.value.filter((segment) => segment.is_gap).length),
 )
 
 const selectedRoute = computed(() => routeOptions.value[activeRouteIndex.value] || null)
@@ -884,7 +889,7 @@ const selectedRoute = computed(() => routeOptions.value[activeRouteIndex.value] 
 const routeOptionCards = computed(() =>
   routeOptions.value.map((route, index) => {
     const gapCount =
-      (route.gap_segments || []).length ||
+      (route.gap_points || []).length ||
       (route.route_geometry ? 0 : (route.route_segments || []).filter((segment) => segment.is_gap).length)
 
     return {
@@ -913,7 +918,7 @@ const selectedRouteMetrics = computed(() => ({
 }))
 
 const warningCards = computed(() =>
-  routeGeometry.value || gapSegments.value.length || routeSegments.value.length
+  routeGeometry.value || gapPoints.value.length || routeSegments.value.length
     ? [
           {
             id: 'alerts',
@@ -948,7 +953,7 @@ const warningCards = computed(() =>
         :route-geometry="routeGeometry"
         :route-options="routeOptions"
         :active-route-index="activeRouteIndex"
-        :gap-segments="gapSegments"
+        :gap-points="gapPoints"
         :route-segments="routeSegments"
         :heatmap-regions="heatmapRegions"
         :alerts="routeAlerts"

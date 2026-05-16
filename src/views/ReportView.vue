@@ -148,7 +148,7 @@ async function submitReport() {
 
     reports.value = [report, ...reports.value.filter((item) => item.report_id !== report.report_id)]
     description.value = ''
-    statusMessage.value = 'Gap report submitted and linked to your local RideSmart ID.'
+    statusMessage.value = 'Gap report submitted and linked to your local RydeSmrt ID.'
   } catch (error) {
     errorMessage.value = 'Report submission failed. Please try again.'
   } finally {
