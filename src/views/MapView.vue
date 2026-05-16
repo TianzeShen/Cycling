@@ -69,6 +69,8 @@ const analysisStack = ref(null)
 const isAnalysisHighlighted = ref(false)
 const isMobileAnalysisExpanded = ref(false)
 const mobileAnalysisDragStartY = ref(null)
+const mobileAnalysisDragOffset = ref(0)
+const isMobileAnalysisDragging = ref(false)
 const hasMobileAnalysisDragged = ref(false)
 const shouldIgnoreAnalysisToggleClick = ref(false)
 let analysisHighlightTimer = null
@@ -400,6 +402,8 @@ function handleMobileAnalysisDragStart(event) {
   }
 
   mobileAnalysisDragStartY.value = event.clientY
+  mobileAnalysisDragOffset.value = 0
+  isMobileAnalysisDragging.value = true
   hasMobileAnalysisDragged.value = false
   shouldIgnoreAnalysisToggleClick.value = false
   event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -410,7 +414,13 @@ function handleMobileAnalysisDragMove(event) {
     return
   }
 
-  if (Math.abs(event.clientY - mobileAnalysisDragStartY.value) > 12) {
+  const dragDistance = event.clientY - mobileAnalysisDragStartY.value
+
+  mobileAnalysisDragOffset.value = isMobileAnalysisExpanded.value
+    ? Math.max(0, dragDistance)
+    : Math.min(0, dragDistance)
+
+  if (Math.abs(dragDistance) > 12) {
     hasMobileAnalysisDragged.value = true
   }
 }
@@ -433,12 +443,16 @@ function finishMobileAnalysisDrag(event) {
   }
 
   mobileAnalysisDragStartY.value = null
+  mobileAnalysisDragOffset.value = 0
+  isMobileAnalysisDragging.value = false
   hasMobileAnalysisDragged.value = false
   event.currentTarget.releasePointerCapture?.(event.pointerId)
 }
 
 function cancelMobileAnalysisDrag() {
   mobileAnalysisDragStartY.value = null
+  mobileAnalysisDragOffset.value = 0
+  isMobileAnalysisDragging.value = false
   hasMobileAnalysisDragged.value = false
 }
 
@@ -942,6 +956,30 @@ const warningCards = computed(() =>
       ]
     : [],
 )
+
+const isMobileAnalysisRevealing = computed(
+  () => isMobileAnalysisDragging.value && !isMobileAnalysisExpanded.value && mobileAnalysisDragOffset.value < 0,
+)
+
+function getMobileExpandedAnalysisHeight() {
+  if (typeof window === 'undefined') {
+    return 560
+  }
+
+  return Math.min(window.innerHeight * 0.64, 560)
+}
+
+const mobileAnalysisStyle = computed(() => ({
+  '--analysis-drag-height': isMobileAnalysisDragging.value
+    ? isMobileAnalysisExpanded.value
+      ? `${Math.max(35, getMobileExpandedAnalysisHeight() - mobileAnalysisDragOffset.value)}px`
+      : `${Math.min(getMobileExpandedAnalysisHeight(), 35 + Math.abs(mobileAnalysisDragOffset.value))}px`
+    : undefined,
+  '--analysis-drag-progress':
+    isMobileAnalysisDragging.value && isMobileAnalysisExpanded.value
+      ? Math.min(1, mobileAnalysisDragOffset.value / Math.max(getMobileExpandedAnalysisHeight() - 35, 1))
+      : 0,
+}))
 </script>
 
 <template>
@@ -1230,9 +1268,12 @@ const warningCards = computed(() =>
           v-if="showAnalysis"
           ref="analysisStack"
           class="analysis-stack"
+          :style="mobileAnalysisStyle"
           :class="{
             'analysis-stack-highlight': isAnalysisHighlighted,
             'analysis-stack-expanded': isMobileAnalysisExpanded,
+            'analysis-stack-dragging': isMobileAnalysisDragging,
+            'analysis-stack-revealing': isMobileAnalysisRevealing,
           }"
         >
           <button

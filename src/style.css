@@ -5071,11 +5071,11 @@ code {
 @media (max-width: 620px) {
   .map-side-panel {
     bottom: auto;
-    left: 0.75rem;
+    left: 0;
     max-height: none;
     overflow: visible;
-    right: 0.75rem;
-    top: 6.85rem;
+    right: 0;
+    top: 0;
     width: auto;
     z-index: 16;
   }
@@ -5165,6 +5165,7 @@ code {
   }
 
   .compact-planner {
+    border-radius: 0;
     gap: 0.85rem;
     padding: 1rem;
     position: static;
@@ -5232,7 +5233,7 @@ code {
     box-shadow: 0 -18px 42px rgba(15, 23, 42, 0.24);
     gap: 0.35rem;
     left: 0;
-    max-height: 12rem;
+    max-height: var(--analysis-drag-height, 2.2rem);
     overflow: hidden;
     padding: 0.25rem 0.75rem 0.75rem;
     position: fixed;
@@ -5242,9 +5243,18 @@ code {
   }
 
   .analysis-stack.analysis-stack-expanded {
-    max-height: min(72vh, 620px);
+    max-height: var(--analysis-drag-height, min(64vh, 560px));
     overflow-y: auto;
     padding-bottom: 1rem;
+  }
+
+  .analysis-stack.analysis-stack-dragging {
+    transition: none;
+  }
+
+  .analysis-stack.analysis-stack-dragging.analysis-stack-expanded {
+    box-shadow: 0 calc(-18px + (18px * var(--analysis-drag-progress, 0)))
+      calc(42px - (18px * var(--analysis-drag-progress, 0))) rgba(15, 23, 42, 0.24);
   }
 
   .analysis-sheet-toggle {
@@ -5319,17 +5329,19 @@ code {
     font-size: 0.88rem;
   }
 
-  .analysis-stack:not(.analysis-stack-expanded) .score-panel-vibrant h2,
-  .analysis-stack:not(.analysis-stack-expanded) .score-panel-vibrant p {
+  .analysis-stack:not(.analysis-stack-expanded):not(.analysis-stack-revealing) .score-panel-vibrant h2,
+  .analysis-stack:not(.analysis-stack-expanded):not(.analysis-stack-revealing) .score-panel-vibrant p {
     display: none;
   }
 
-  .analysis-stack.analysis-stack-expanded .score-panel-vibrant h2 {
+  .analysis-stack.analysis-stack-expanded .score-panel-vibrant h2,
+  .analysis-stack.analysis-stack-revealing .score-panel-vibrant h2 {
     font-size: 1.05rem;
     margin-bottom: 0.35rem;
   }
 
-  .analysis-stack.analysis-stack-expanded .score-panel-vibrant p {
+  .analysis-stack.analysis-stack-expanded .score-panel-vibrant p,
+  .analysis-stack.analysis-stack-revealing .score-panel-vibrant p {
     display: block;
     font-size: 0.86rem;
     line-height: 1.45;
@@ -5339,7 +5351,8 @@ code {
     display: none;
   }
 
-  .analysis-stack-expanded .analysis-detail-panel {
+  .analysis-stack-expanded .analysis-detail-panel,
+  .analysis-stack-revealing .analysis-detail-panel {
     display: block;
   }
 
