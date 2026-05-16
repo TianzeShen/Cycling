@@ -137,6 +137,60 @@
         </div>
       </section>
 
+      <section class="home-conditions-section">
+        <div class="conditions-intro">
+          <span class="eyebrow-dark">Riding Conditions</span>
+          <h2>Safety is also shaped by the day around you.</h2>
+          <p>
+            Gradient, ultraviolet exposure, and air quality all change how a ride feels. Explore the
+            live data behind those conditions before choosing when and where to cycle.
+          </p>
+          <RouterLink to="/conditions" class="conditions-link">Explore conditions</RouterLink>
+        </div>
+
+        <div class="conditions-preview-grid">
+          <article class="conditions-preview-card">
+            <div class="conditions-preview-card-inner">
+              <div class="conditions-preview-face conditions-preview-front">
+                <span>01</span>
+                <h3>Elevation</h3>
+                <p>See where a route becomes more demanding across sampled terrain points.</p>
+              </div>
+              <div class="conditions-preview-face conditions-preview-back">
+                <span>Why it matters</span>
+                <p>Spot climbing effort early so a route does not surprise newer riders halfway through.</p>
+              </div>
+            </div>
+          </article>
+          <article class="conditions-preview-card">
+            <div class="conditions-preview-card-inner">
+              <div class="conditions-preview-face conditions-preview-front">
+                <span>02</span>
+                <h3>UV forecast</h3>
+                <p>Compare daily UV curves and identify when sun protection matters most.</p>
+              </div>
+              <div class="conditions-preview-face conditions-preview-back">
+                <span>Why it matters</span>
+                <p>Choose a safer riding window when the midday UV peak becomes less forgiving.</p>
+              </div>
+            </div>
+          </article>
+          <article class="conditions-preview-card">
+            <div class="conditions-preview-card-inner">
+              <div class="conditions-preview-face conditions-preview-front">
+                <span>03</span>
+                <h3>Air quality</h3>
+                <p>Check hourly particle forecasts before committing to a longer outdoor ride.</p>
+              </div>
+              <div class="conditions-preview-face conditions-preview-back">
+                <span>Why it matters</span>
+                <p>Long rides mean deeper breathing, so particle spikes deserve a quick check first.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="home-impact-section">
         <div class="impact-grid">
           <div class="impact-copy">
