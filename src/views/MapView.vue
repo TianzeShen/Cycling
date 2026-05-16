@@ -963,10 +963,10 @@ const isMobileAnalysisRevealing = computed(
 
 function getMobileExpandedAnalysisHeight() {
   if (typeof window === 'undefined') {
-    return 560
+    return 490
   }
 
-  return Math.min(window.innerHeight * 0.64, 560)
+  return Math.min(window.innerHeight * 0.56, 490)
 }
 
 const mobileAnalysisStyle = computed(() => ({

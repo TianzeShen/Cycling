@@ -5090,7 +5090,7 @@ code {
     min-width: 0;
     padding: 0.45rem;
     right: 0.75rem;
-    top: 0.75rem;
+    top: 7.7rem;
     z-index: 18;
   }
 
@@ -5243,7 +5243,7 @@ code {
   }
 
   .analysis-stack.analysis-stack-expanded {
-    max-height: var(--analysis-drag-height, min(64vh, 560px));
+    max-height: var(--analysis-drag-height, min(56vh, 490px));
     overflow-y: auto;
     padding-bottom: 1rem;
   }
