@@ -40,6 +40,10 @@ class DuplicateReportError(ValueError):
     pass
 
 
+class ReportAlreadyLikedError(ValueError):
+    pass
+
+
 def create_report(payload: ReportCreateRequest) -> ReportResponse:
     report_id = str(uuid4())
     gap_id = str(uuid4())
@@ -181,7 +185,7 @@ def list_all_reports(user_id: str) -> PublicReportListResponse:
             ir.lng AS longitude,
             ir.description,
             ir.reported_at,
-            COUNT(rl.like_id)::int AS like_count,
+            COALESCE(SUM(rl.like_count), 0)::int AS like_count,
             COALESCE(
                 BOOL_OR(rl.user_id = CAST(:user_id AS uuid)),
                 false
@@ -338,6 +342,26 @@ def like_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeRespons
     with get_transaction_connection() as connection:
         ensure_local_uuid_user_exists(connection, payload.user_id)
         ensure_report_exists(connection, report_id)
+        existing_like = connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM ridesmart.report_like
+                WHERE report_id = CAST(:report_id AS uuid)
+                  AND user_id = CAST(:user_id AS uuid)
+                LIMIT 1
+                """
+            ),
+            {
+                "report_id": report_id,
+                "user_id": payload.user_id,
+            },
+        ).scalar()
+        if existing_like:
+            raise ReportAlreadyLikedError(
+                "This user has already submitted likes for this report."
+            )
+
         connection.execute(
             text(
                 """
@@ -345,49 +369,28 @@ def like_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeRespons
                     like_id,
                     report_id,
                     user_id,
+                    like_count,
                     liked_at
                 )
                 VALUES (
                     gen_random_uuid(),
                     CAST(:report_id AS uuid),
                     CAST(:user_id AS uuid),
+                    :like_count,
                     NOW()
                 )
-                ON CONFLICT (report_id, user_id) DO NOTHING
                 """
             ),
             {
                 "report_id": report_id,
                 "user_id": payload.user_id,
+                "like_count": payload.like_count,
             },
         )
         return fetch_report_like_state(
             connection=connection,
             report_id=report_id,
             user_id=payload.user_id,
-        )
-
-
-def unlike_report(report_id: str, user_id: str) -> ReportLikeResponse:
-    with get_transaction_connection() as connection:
-        ensure_report_exists(connection, report_id)
-        connection.execute(
-            text(
-                """
-                DELETE FROM ridesmart.report_like
-                WHERE report_id = CAST(:report_id AS uuid)
-                  AND user_id = CAST(:user_id AS uuid)
-                """
-            ),
-            {
-                "report_id": report_id,
-                "user_id": user_id,
-            },
-        )
-        return fetch_report_like_state(
-            connection=connection,
-            report_id=report_id,
-            user_id=user_id,
         )
 
 
@@ -550,7 +553,7 @@ def fetch_report_like_state(
                 """
                 SELECT
                     ir.report_id::text AS report_id,
-                    COUNT(rl.like_id)::int AS like_count,
+                    COALESCE(SUM(rl.like_count), 0)::int AS like_count,
                     COALESCE(
                         BOOL_OR(rl.user_id = CAST(:user_id AS uuid)),
                         false

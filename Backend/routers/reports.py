@@ -18,7 +18,7 @@ try:
         like_report,
         list_all_reports,
         list_reports_for_user,
-        unlike_report,
+        ReportAlreadyLikedError,
         update_report,
     )
 except ModuleNotFoundError:
@@ -39,7 +39,7 @@ except ModuleNotFoundError:
         like_report,
         list_all_reports,
         list_reports_for_user,
-        unlike_report,
+        ReportAlreadyLikedError,
         update_report,
     )
 
@@ -89,11 +89,5 @@ def like_user_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeRe
         return like_report(report_id, payload)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.delete("/{report_id}/like", response_model=ReportLikeResponse, summary="Remove like from a report")
-def unlike_user_report(report_id: str, user_id: str) -> ReportLikeResponse:
-    try:
-        return unlike_report(report_id, user_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReportAlreadyLikedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

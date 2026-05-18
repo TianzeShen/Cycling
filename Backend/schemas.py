@@ -246,6 +246,12 @@ class ReportDeleteResponse(BaseModel):
 
 class ReportLikeRequest(BaseModel):
     user_id: str = Field(..., description="Stable client-generated UUID stored in localStorage.")
+    like_count: int = Field(
+        ...,
+        ge=1,
+        le=100,
+        description="Final like count captured within the frontend liking window.",
+    )
 
     @field_validator("user_id")
     @classmethod
