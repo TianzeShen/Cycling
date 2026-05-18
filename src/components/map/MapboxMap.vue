@@ -35,6 +35,14 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  tripProgressIndex: {
+    type: Number,
+    default: -1,
+  },
+  tripFollowPoint: {
+    type: Array,
+    default: null,
+  },
   heatmapRegions: {
     type: Array,
     default: () => [],
@@ -81,6 +89,7 @@ let longPressPoint = null
 let heatmapHoverFrame = null
 let pendingHeatmapHoverFeature = null
 let lastHeatmapHoverCode = null
+let hoveredAlternativeRouteId = null
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
 const useRasterBaseMap = import.meta.env.VITE_MAPBOX_RASTER_BASE !== 'false'
@@ -141,6 +150,28 @@ function handleRouteOptionClick(event) {
 
   reportMenu.value = null
   emit('route-selected', routeIndex)
+}
+
+function setHoveredAlternativeRoute(routeId) {
+  if (hoveredAlternativeRouteId === routeId) {
+    return
+  }
+
+  if (hoveredAlternativeRouteId !== null) {
+    map.value?.setFeatureState(
+      { source: 'route-alternatives', id: hoveredAlternativeRouteId },
+      { hover: false },
+    )
+  }
+
+  hoveredAlternativeRouteId = routeId
+
+  if (hoveredAlternativeRouteId !== null) {
+    map.value?.setFeatureState(
+      { source: 'route-alternatives', id: hoveredAlternativeRouteId },
+      { hover: true },
+    )
+  }
 }
 
 function emptyCollection() {
@@ -204,10 +235,63 @@ function getMainRouteCollection() {
   return emptyCollection()
 }
 
+function splitTripRouteCoordinates() {
+  const coordinates = props.routeGeometry?.coordinates || []
+
+  if (!coordinates.length || props.tripProgressIndex < 0) {
+    return {
+      traveled: [],
+      remaining: coordinates,
+    }
+  }
+
+  const progressIndex = Math.max(0, Math.min(props.tripProgressIndex, coordinates.length - 1))
+
+  return {
+    traveled: coordinates.slice(0, progressIndex + 1),
+    remaining: coordinates.slice(progressIndex),
+  }
+}
+
+function getTraveledRouteCollection() {
+  const { traveled } = splitTripRouteCoordinates()
+
+  return traveled.length > 1
+    ? {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: traveled },
+          },
+        ],
+      }
+    : emptyCollection()
+}
+
+function getRemainingRouteCollection() {
+  const { remaining } = splitTripRouteCoordinates()
+
+  return remaining.length > 1
+    ? {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: remaining },
+          },
+        ],
+      }
+    : getMainRouteCollection()
+}
+
 function routeOptionToFeature(route, index) {
   if (route?.route_geometry?.type === 'LineString' && Array.isArray(route.route_geometry.coordinates)) {
     return {
       type: 'Feature',
+      id: index,
       properties: {
         label: route.label || `Route ${index + 1}`,
         provider: route.provider || '',
@@ -434,7 +518,8 @@ function updateRouteData() {
   }
 
   setSourceData('route-alternatives', getAlternativeRouteCollection())
-  setSourceData('route-main', getMainRouteCollection())
+  setSourceData('route-main', getRemainingRouteCollection())
+  setSourceData('route-traveled', getTraveledRouteCollection())
   setSourceData('route-gaps', getGapPointCollection())
 }
 
@@ -531,6 +616,25 @@ function fitToRoute() {
   })
 }
 
+function followTripPoint() {
+  if (!mapReady.value || !props.tripFollowPoint) {
+    return
+  }
+
+  const center = toMapboxLngLat(props.tripFollowPoint)
+
+  if (!center) {
+    return
+  }
+
+  map.value.easeTo({
+    center,
+    zoom: Math.max(map.value.getZoom(), 15),
+    duration: 700,
+    essential: true,
+  })
+}
+
 function updateLayerVisibility() {
   if (!mapReady.value) {
     return
@@ -541,8 +645,10 @@ function updateLayerVisibility() {
 
   setLayerVisibility('route-alternative-casing', !isHeatmap)
   setLayerVisibility('route-alternative-lines', !isHeatmap)
+  setLayerVisibility('route-alternative-labels', !isHeatmap)
   setLayerVisibility('route-main-casing', !isHeatmap)
   setLayerVisibility('route-segment-lines', !isHeatmap)
+  setLayerVisibility('route-traveled-lines', !isHeatmap)
   setLayerVisibility('route-gap-halo', !isHeatmap)
   setLayerVisibility('route-gap-points', !isHeatmap)
   setLayerVisibility('route-points', !isHeatmap)
@@ -704,6 +810,12 @@ function addMapSources() {
     tolerance: 0.8,
   })
 
+  map.value.addSource('route-traveled', {
+    type: 'geojson',
+    data: getTraveledRouteCollection(),
+    tolerance: 0.8,
+  })
+
   map.value.addSource('route-alternatives', {
     type: 'geojson',
     data: getAlternativeRouteCollection(),
@@ -739,9 +851,10 @@ function addMapLayers() {
     type: 'line',
     source: 'route-alternatives',
     paint: {
-      'line-width': 8,
-      'line-opacity': 0.72,
+      'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 10, 8],
+      'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.98, 0.72],
       'line-color': '#ffffff',
+      'line-offset': ['case', ['==', ['%', ['get', 'routeIndex'], 2], 0], 4, -4],
     },
     layout: {
       'line-cap': 'round',
@@ -754,9 +867,11 @@ function addMapLayers() {
     type: 'line',
     source: 'route-alternatives',
     paint: {
-      'line-width': 5.5,
-      'line-opacity': 0.76,
-      'line-color': '#6366f1',
+      'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 7, 5],
+      'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0.8],
+      'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#4338ca', '#6366f1'],
+      'line-offset': ['case', ['==', ['%', ['get', 'routeIndex'], 2], 0], 4, -4],
+      'line-dasharray': [1.4, 1.1],
     },
     layout: {
       'line-cap': 'round',
@@ -780,6 +895,27 @@ function addMapLayers() {
   })
 
   map.value.addLayer({
+    id: 'route-alternative-labels',
+    type: 'symbol',
+    source: 'route-alternatives',
+    layout: {
+      'symbol-placement': 'line',
+      'symbol-spacing': 280,
+      'text-field': ['get', 'label'],
+      'text-size': 12,
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-keep-upright': true,
+    },
+    paint: {
+      'text-color': '#4338ca',
+      'text-halo-color': '#ffffff',
+      'text-halo-width': 2,
+      'text-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0.9],
+    },
+  })
+
+
+  map.value.addLayer({
     id: 'route-main-casing',
     type: 'line',
     source: 'route-main',
@@ -787,6 +923,21 @@ function addMapLayers() {
       'line-width': 11,
       'line-opacity': 0.82,
       'line-color': '#ffffff',
+    },
+    layout: {
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  })
+
+  map.value.addLayer({
+    id: 'route-traveled-lines',
+    type: 'line',
+    source: 'route-traveled',
+    paint: {
+      'line-width': 6,
+      'line-opacity': 0.42,
+      'line-color': '#94a3b8',
     },
     layout: {
       'line-cap': 'round',
@@ -1044,8 +1195,14 @@ function addMapLayers() {
     map.value.getCanvas().style.cursor = 'pointer'
   })
 
+  map.value.on('mousemove', 'route-alternative-hit', (event) => {
+    const routeId = event.features?.[0]?.id
+    setHoveredAlternativeRoute(routeId ?? null)
+  })
+
   map.value.on('mouseleave', 'route-alternative-hit', () => {
     map.value.getCanvas().style.cursor = ''
+    setHoveredAlternativeRoute(null)
   })
 
   map.value.on('mouseenter', 'community-report-icons', () => {
@@ -1244,6 +1401,17 @@ watch(
 watch(
   () => props.activeRouteIndex,
   updateRouteData,
+)
+
+watch(
+  () => props.tripProgressIndex,
+  updateRouteData,
+)
+
+watch(
+  () => props.tripFollowPoint,
+  followTripPoint,
+  { deep: true },
 )
 
 watch(

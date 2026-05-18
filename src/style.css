@@ -544,6 +544,115 @@ body.map-is-moving .glass-header {
   padding: 0.7rem 0.95rem;
 }
 
+.trip-launch-panel {
+  align-items: center;
+  bottom: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  left: 50%;
+  min-width: min(560px, calc(100% - 2rem));
+  padding: 0.9rem 1rem;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+
+.trip-launch-panel > div:first-child,
+.trip-live-summary {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.trip-launch-panel strong {
+  color: var(--dark);
+}
+
+.trip-live-metrics {
+  color: var(--text-muted);
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 0.9rem;
+}
+
+.trip-maneuver {
+  background: rgba(15, 23, 42, 0.05);
+  border-radius: 999px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  min-width: 110px;
+  padding: 0.45rem 0.7rem;
+}
+
+.trip-maneuver span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.trip-maneuver strong {
+  color: var(--dark);
+  font-size: 0.82rem;
+}
+
+.trip-maneuver-left,
+.trip-maneuver-right {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.trip-recalculate-btn {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.trip-summary-card {
+  display: grid;
+  gap: 0.85rem;
+  left: 1.5rem;
+  padding: 1rem;
+  position: absolute;
+  top: 1.5rem;
+  width: min(320px, calc(100% - 3rem));
+  z-index: 20;
+}
+
+.trip-summary-header {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.trip-summary-header strong {
+  color: var(--dark);
+  font-size: 1.5rem;
+}
+
+.trip-summary-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trip-summary-grid div {
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.7rem;
+}
+
+.trip-summary-grid span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.trip-summary-grid strong {
+  color: var(--dark);
+  font-size: 0.88rem;
+}
+
 .mapbox-token-empty,
 .locating-panel {
   left: 50%;
@@ -1401,6 +1510,10 @@ code {
     width: calc(100% - 2rem);
   }
 
+  .map-report-hint.map-report-hint-trip-active {
+    bottom: 10rem;
+  }
+
   .route-top-strip,
   .route-top-strip.with-side-panel {
     height: auto;
@@ -1595,6 +1708,10 @@ code {
   transform: translateX(-50%);
   width: max-content;
   z-index: 9;
+}
+
+.map-report-hint-trip-active {
+  bottom: 6.9rem;
 }
 
 .report-entry-hint {
@@ -5522,6 +5639,58 @@ code {
     right: 0;
     transition: max-height 0.28s ease, box-shadow 0.28s ease;
     z-index: 24;
+  }
+
+  .trip-launch-panel {
+    bottom: 6.1rem;
+    gap: 0.65rem;
+    min-width: 0;
+    padding: 0.62rem 0.75rem;
+    width: calc(100% - 1.5rem);
+    z-index: 25;
+  }
+
+  .trip-launch-panel > div:first-child,
+  .trip-live-summary {
+    min-width: 0;
+  }
+
+  .trip-launch-panel .panel-kicker {
+    font-size: 0.62rem;
+  }
+
+  .trip-launch-panel strong {
+    font-size: 0.84rem;
+  }
+
+  .trip-launch-panel button {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    padding: 0.62rem 0.9rem;
+  }
+
+  .trip-launch-panel .trip-recalculate-btn {
+    padding-inline: 0.7rem;
+  }
+
+  .trip-live-metrics {
+    display: none;
+  }
+
+  .trip-maneuver {
+    min-width: 0;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .trip-maneuver span,
+  .trip-maneuver strong {
+    font-size: 0.68rem;
+  }
+
+  .trip-summary-card {
+    left: 0.75rem;
+    top: 0.75rem;
+    width: calc(100% - 1.5rem);
   }
 
   .analysis-stack.analysis-stack-expanded {

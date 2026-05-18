@@ -105,6 +105,16 @@ const locationStatus = ref(
 )
 const currentLocationLabel = ref(shouldRestoreMapState ? savedMapState.currentLocationLabel || '' : '')
 const myReports = ref([])
+const tripStatus = ref('idle')
+const tripStartedAt = ref(null)
+const tripElapsedSeconds = ref(0)
+const tripLiveLocation = ref(null)
+const tripProgressIndex = ref(-1)
+const isTripOffRoute = ref(false)
+const isRecalculatingTrip = ref(false)
+const tripHadOffRouteEvent = ref(false)
+let tripTimer = null
+let tripWatchId = null
 
 function riskTone(riskLevel) {
   const normalisedRisk = String(riskLevel || '').toLowerCase()
@@ -341,6 +351,187 @@ function formatRouteScore(score) {
   return `Score ${Math.round(value)}`
 }
 
+function radians(value) {
+  return (value * Math.PI) / 180
+}
+
+function distanceBetweenKm(left, right) {
+  if (!isCoordinatePair(left) || !isCoordinatePair(right)) {
+    return 0
+  }
+
+  const [leftLat, leftLng] = left
+  const [rightLat, rightLng] = right
+  const latDelta = radians(rightLat - leftLat)
+  const lngDelta = radians(rightLng - leftLng)
+  const a =
+    Math.sin(latDelta / 2) ** 2 +
+    Math.cos(radians(leftLat)) * Math.cos(radians(rightLat)) * Math.sin(lngDelta / 2) ** 2
+
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function bearingBetween(left, right) {
+  if (!isCoordinatePair(left) || !isCoordinatePair(right)) {
+    return 0
+  }
+
+  const [leftLat, leftLng] = left.map(radians)
+  const [rightLat, rightLng] = right.map(radians)
+  const y = Math.sin(rightLng - leftLng) * Math.cos(rightLat)
+  const x =
+    Math.cos(leftLat) * Math.sin(rightLat) -
+    Math.sin(leftLat) * Math.cos(rightLat) * Math.cos(rightLng - leftLng)
+
+  return (Math.atan2(y, x) * 180) / Math.PI
+}
+
+function normaliseTurnAngle(angle) {
+  return ((angle + 540) % 360) - 180
+}
+
+function getSelectedRouteLatLngCoordinates() {
+  return (routeGeometry.value?.coordinates || [])
+    .filter((coordinate) => Array.isArray(coordinate) && coordinate.length >= 2)
+    .map(([lng, lat]) => [lat, lng])
+}
+
+function getNearestRoutePointIndex(location) {
+  const coordinates = getSelectedRouteLatLngCoordinates()
+
+  if (!coordinates.length || !isCoordinatePair(location)) {
+    return -1
+  }
+
+  return coordinates.reduce(
+    (nearest, coordinate, index) => {
+      const distance = distanceBetweenKm(location, coordinate)
+      return distance < nearest.distance ? { distance, index } : nearest
+    },
+    { distance: Number.POSITIVE_INFINITY, index: -1 },
+  ).index
+}
+
+function getRemainingDistanceKm(location) {
+  const coordinates = getSelectedRouteLatLngCoordinates()
+  const nearestIndex = getNearestRoutePointIndex(location)
+
+  if (!coordinates.length || nearestIndex < 0) {
+    return selectedRoute.value?.distance_km || 0
+  }
+
+  let remainingDistance = distanceBetweenKm(location, coordinates[nearestIndex])
+
+  for (let index = nearestIndex; index < coordinates.length - 1; index += 1) {
+    remainingDistance += distanceBetweenKm(coordinates[index], coordinates[index + 1])
+  }
+
+  return remainingDistance
+}
+
+function getDistanceAlongRouteKm(startIndex, endIndex) {
+  const coordinates = getSelectedRouteLatLngCoordinates()
+
+  if (startIndex < 0 || endIndex <= startIndex || !coordinates.length) {
+    return 0
+  }
+
+  let distance = 0
+
+  for (let index = startIndex; index < endIndex; index += 1) {
+    distance += distanceBetweenKm(coordinates[index], coordinates[index + 1])
+  }
+
+  return distance
+}
+
+function formatTripElapsed(seconds) {
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return `${minutes}:${String(remainder).padStart(2, '0')}`
+}
+
+function stopTripTracking() {
+  if (tripTimer) {
+    window.clearInterval(tripTimer)
+    tripTimer = null
+  }
+
+  if (tripWatchId !== null) {
+    navigator.geolocation?.clearWatch(tripWatchId)
+    tripWatchId = null
+  }
+}
+
+function updateTripLocation(position) {
+  const location = [position.coords.latitude, position.coords.longitude]
+  tripLiveLocation.value = location
+  startCoordinate.value = location
+  const nearestIndex = getNearestRoutePointIndex(location)
+  const routeCoordinates = getSelectedRouteLatLngCoordinates()
+  const nearestDistance =
+    nearestIndex >= 0 ? distanceBetweenKm(location, routeCoordinates[nearestIndex]) : Number.POSITIVE_INFINITY
+
+  isTripOffRoute.value = nearestDistance > 0.08
+  if (isTripOffRoute.value) {
+    tripHadOffRouteEvent.value = true
+  }
+  tripProgressIndex.value = nearestIndex
+
+  if (endCoordinate.value && distanceBetweenKm(location, endCoordinate.value) <= 0.05) {
+    tripStatus.value = 'completed'
+    stopTripTracking()
+  }
+}
+
+function startTrip() {
+  if (!selectedRoute.value || !routeGeometry.value || tripStatus.value === 'active') {
+    return
+  }
+
+  tripStatus.value = 'active'
+  tripStartedAt.value = Date.now()
+  tripElapsedSeconds.value = 0
+  isTripOffRoute.value = false
+  tripHadOffRouteEvent.value = false
+  isAnalysisVisible.value = false
+  mode.value = mapModes.routeAnalysis
+
+  tripTimer = window.setInterval(() => {
+    tripElapsedSeconds.value = Math.floor((Date.now() - tripStartedAt.value) / 1000)
+  }, 1000)
+
+  if (navigator.geolocation) {
+    tripWatchId = navigator.geolocation.watchPosition(updateTripLocation, () => {}, {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 10000,
+    })
+  }
+}
+
+function endTrip() {
+  tripStatus.value = 'completed'
+  stopTripTracking()
+}
+
+function closeTrip() {
+  clearRoutePlan()
+}
+
+function exitNavigation() {
+  tripStatus.value = 'idle'
+  tripStartedAt.value = null
+  tripElapsedSeconds.value = 0
+  tripLiveLocation.value = null
+  tripProgressIndex.value = -1
+  isTripOffRoute.value = false
+  tripHadOffRouteEvent.value = false
+  isAnalysisVisible.value = Boolean(result.value || routeGeometry.value)
+  mode.value = mapModes.routeAnalysis
+  stopTripTracking()
+}
+
 function routeScoreTone(score) {
   const value = toFiniteNumber(score)
 
@@ -567,9 +758,9 @@ const isHeatmapMode = computed(
   () => mode.value === mapModes.heatmapPanel || mode.value === mapModes.heatmapMapOnly,
 )
 
-const showRouteControls = computed(() => !isHeatmapMode.value)
+const showRouteControls = computed(() => !isHeatmapMode.value && tripStatus.value === 'idle')
 const showAnalysis = computed(
-  () => mode.value === mapModes.routeAnalysis && isAnalysisVisible.value,
+  () => mode.value === mapModes.routeAnalysis && isAnalysisVisible.value && tripStatus.value !== 'active',
 )
 const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
 const isSidePanelVisible = ref(shouldRestoreMapState ? savedMapState.isSidePanelVisible !== false : true)
@@ -702,6 +893,41 @@ async function evaluateJourney() {
   }
 }
 
+async function recalculateTripRoute() {
+  if (!tripLiveLocation.value || !endCoordinate.value || isRecalculatingTrip.value) {
+    return
+  }
+
+  isRecalculatingTrip.value = true
+  errorMessage.value = ''
+  startCoordinate.value = tripLiveLocation.value
+  hasStartCoordinate.value = true
+
+  try {
+    const routeResult = await recommendRoute({
+      start_lat: tripLiveLocation.value[0],
+      start_lng: tripLiveLocation.value[1],
+      end_lat: endCoordinate.value[0],
+      end_lng: endCoordinate.value[1],
+    })
+
+    routeOptions.value = normaliseRouteOptions(routeResult)
+    activeRouteIndex.value = 0
+    routeAlertsStatusMessage.value = routeResult.alerts_status_message || ''
+    result.value = routeOptions.value[0] || null
+
+    if (routeOptions.value.length) {
+      setActiveRoute(0)
+      tripProgressIndex.value = 0
+      isTripOffRoute.value = false
+    }
+  } catch (error) {
+    errorMessage.value = formatBackendError(error, 'Unable to recalculate the route right now.')
+  } finally {
+    isRecalculatingTrip.value = false
+  }
+}
+
 function showRouteMode() {
   mode.value =
     result.value || routeGeometry.value || gapPoints.value.length || routeSegments.value.length
@@ -716,6 +942,14 @@ function hideAnalysis() {
 }
 
 function clearRoutePlan() {
+  tripStatus.value = 'idle'
+  tripStartedAt.value = null
+  tripElapsedSeconds.value = 0
+  tripLiveLocation.value = null
+  tripProgressIndex.value = -1
+  isTripOffRoute.value = false
+  tripHadOffRouteEvent.value = false
+  stopTripTracking()
   result.value = null
   routeOptions.value = []
   activeRouteIndex.value = 0
@@ -891,6 +1125,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.clearTimeout(analysisHighlightTimer)
+  stopTripTracking()
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })
 
@@ -929,6 +1164,79 @@ const feasibilityInsights = computed(() =>
 const selectedRouteMetrics = computed(() => ({
   distanceLabel: selectedRoute.value ? formatDistance(selectedRoute.value.distance_km) : '',
   durationLabel: selectedRoute.value ? formatDuration(selectedRoute.value.duration_min) : '',
+}))
+
+const tripRemainingDistanceKm = computed(() =>
+  tripStatus.value === 'active' && tripLiveLocation.value
+    ? getRemainingDistanceKm(tripLiveLocation.value)
+    : selectedRoute.value?.distance_km || 0,
+)
+
+const tripRemainingMinutes = computed(() => {
+  const routeDistance = selectedRoute.value?.distance_km || 0
+  const routeDuration = selectedRoute.value?.duration_min || 0
+
+  if (!routeDistance || !routeDuration) {
+    return 0
+  }
+
+  return Math.max(0, (tripRemainingDistanceKm.value / routeDistance) * routeDuration)
+})
+
+const tripStatusLabel = computed(() => {
+  if (tripStatus.value === 'completed') {
+    return 'Trip completed'
+  }
+
+  return isTripOffRoute.value ? 'Off route' : 'On route'
+})
+
+const nextManeuver = computed(() => {
+  if (tripStatus.value !== 'active') {
+    return null
+  }
+
+  const coordinates = getSelectedRouteLatLngCoordinates()
+  const startIndex = Math.max(tripProgressIndex.value, 0)
+
+  if (coordinates.length < 3 || startIndex >= coordinates.length - 2) {
+    return {
+      label: 'Continue to destination',
+      distance: tripRemainingDistanceKm.value,
+      tone: 'straight',
+    }
+  }
+
+  for (let index = Math.max(startIndex + 1, 1); index < coordinates.length - 1; index += 1) {
+    const incomingBearing = bearingBetween(coordinates[index - 1], coordinates[index])
+    const outgoingBearing = bearingBetween(coordinates[index], coordinates[index + 1])
+    const turnAngle = normaliseTurnAngle(outgoingBearing - incomingBearing)
+
+    if (Math.abs(turnAngle) >= 35) {
+      return {
+        label: turnAngle > 0 ? 'Turn right' : 'Turn left',
+        distance: getDistanceAlongRouteKm(startIndex, index),
+        tone: turnAngle > 0 ? 'right' : 'left',
+      }
+    }
+  }
+
+  return {
+    label: 'Continue straight',
+    distance: tripRemainingDistanceKm.value,
+    tone: 'straight',
+  }
+})
+
+const completedTripSummary = computed(() => ({
+  duration: formatTripElapsed(tripElapsedSeconds.value),
+  distance: selectedRoute.value ? formatDistance(selectedRoute.value.distance_km) : 'Distance pending',
+  score: selectedRoute.value ? formatRouteScore(selectedRoute.value.score) : 'Score pending',
+  deviation: tripHadOffRouteEvent.value ? 'Route adjusted' : 'Stayed on route',
+  warnings:
+    displayedGapCount.value > 0
+      ? `${displayedGapCount.value} gap${displayedGapCount.value === 1 ? '' : 's'}`
+      : `${routeAlerts.value.length} warning${routeAlerts.value.length === 1 ? '' : 's'}`,
 }))
 
 const warningCards = computed(() =>
@@ -993,6 +1301,8 @@ const mobileAnalysisStyle = computed(() => ({
         :active-route-index="activeRouteIndex"
         :gap-points="gapPoints"
         :route-segments="routeSegments"
+        :trip-progress-index="tripProgressIndex"
+        :trip-follow-point="tripLiveLocation"
         :heatmap-regions="heatmapRegions"
         :alerts="routeAlerts"
         :start-point="startCoordinate"
@@ -1071,7 +1381,80 @@ const mobileAnalysisStyle = computed(() => ({
       </section>
     </transition>
 
-    <div class="map-report-hint" aria-label="How to report a map issue">
+    <section v-if="selectedRoute && !isHeatmapMode" class="trip-launch-panel glass-panel">
+      <template v-if="tripStatus === 'idle'">
+        <div>
+          <span class="panel-kicker">Ready to ride</span>
+          <strong>{{ selectedRoute.label || 'Selected route' }}</strong>
+        </div>
+        <button type="button" class="primary" @click="startTrip">Start Trip</button>
+      </template>
+
+      <template v-else>
+        <div class="trip-live-summary">
+          <span class="panel-kicker">{{ tripStatusLabel }}</span>
+          <strong>{{ formatTripElapsed(tripElapsedSeconds) }}</strong>
+        </div>
+        <div v-if="nextManeuver" class="trip-maneuver" :class="`trip-maneuver-${nextManeuver.tone}`">
+          <span>{{ nextManeuver.label }}</span>
+          <strong>{{ formatDistance(nextManeuver.distance) }}</strong>
+        </div>
+        <div class="trip-live-metrics">
+          <span>{{ formatDistance(tripRemainingDistanceKm) }} left</span>
+          <span>{{ formatDuration(tripRemainingMinutes) }} left</span>
+        </div>
+        <button
+          v-if="tripStatus === 'active' && isTripOffRoute"
+          type="button"
+          class="trip-recalculate-btn"
+          :disabled="isRecalculatingTrip"
+          @click="recalculateTripRoute"
+        >
+          {{ isRecalculatingTrip ? 'Recalculating...' : 'Recalculate Route' }}
+        </button>
+        <button v-if="tripStatus === 'active'" type="button" class="secondary" @click="exitNavigation">
+          Exit Navigation
+        </button>
+        <button
+          type="button"
+          class="secondary"
+          @click="tripStatus === 'completed' ? closeTrip() : endTrip()"
+        >
+          {{ tripStatus === 'completed' ? 'Close Trip' : 'End Trip' }}
+        </button>
+      </template>
+    </section>
+
+    <section v-if="tripStatus === 'completed'" class="trip-summary-card glass-panel">
+      <div class="trip-summary-header">
+        <span class="panel-kicker">Trip complete</span>
+        <strong>{{ completedTripSummary.duration }}</strong>
+      </div>
+      <div class="trip-summary-grid">
+        <div>
+          <span>Distance</span>
+          <strong>{{ completedTripSummary.distance }}</strong>
+        </div>
+        <div>
+          <span>Safety</span>
+          <strong>{{ completedTripSummary.score }}</strong>
+        </div>
+        <div>
+          <span>Journey</span>
+          <strong>{{ completedTripSummary.deviation }}</strong>
+        </div>
+        <div>
+          <span>Warnings</span>
+          <strong>{{ completedTripSummary.warnings }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <div
+      class="map-report-hint"
+      :class="{ 'map-report-hint-trip-active': selectedRoute && !isHeatmapMode }"
+      aria-label="How to report a map issue"
+    >
       <span>Report a hazard</span>
       <p>Desktop: right-click the map. Mobile: long-press a location.</p>
     </div>
