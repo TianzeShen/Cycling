@@ -66,6 +66,7 @@ const map = ref(null)
 const mapReady = ref(false)
 const geolocate = ref(null)
 const reportMenu = ref(null)
+const activeReportPopup = ref(null)
 let longPressTimer = null
 let longPressPoint = null
 let heatmapHoverFrame = null
@@ -548,22 +549,41 @@ function showReportPopup(event) {
 
   const coordinates = feature.geometry.coordinates.slice()
   const properties = feature.properties || {}
-  const description = escapeHtml(properties.description || 'No description provided.')
+  const description = properties.description || 'No description provided.'
   const reportedAt = properties.reportedAt
     ? new Date(properties.reportedAt).toLocaleString()
     : 'Time pending'
-  const reportType = escapeHtml(properties.type || 'gap')
-  const status = escapeHtml(properties.status || 'submitted')
+  const reportType = properties.type || 'gap'
+  const status = properties.status || 'submitted'
+  const statusKey = String(properties.status || 'submitted').toLowerCase()
+  const statusClass = ['pending', 'validated', 'resolved', 'submitted'].includes(statusKey)
+    ? statusKey
+    : 'submitted'
+  const point = map.value.project(coordinates)
 
-  new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
-    .setLngLat(coordinates)
-    .setHTML(`
-      <strong>${reportType} report</strong>
-      <p>Status: ${status}</p>
-      <p>${description}</p>
-      <p>${escapeHtml(reportedAt)}</p>
-    `)
-    .addTo(map.value)
+  activeReportPopup.value = {
+    coordinates,
+    description,
+    reportedAt,
+    reportType,
+    status,
+    statusClass,
+    x: point.x,
+    y: point.y,
+  }
+}
+
+function updateActiveReportPopupPosition() {
+  if (!map.value || !activeReportPopup.value) {
+    return
+  }
+
+  const point = map.value.project(activeReportPopup.value.coordinates)
+  activeReportPopup.value = {
+    ...activeReportPopup.value,
+    x: point.x,
+    y: point.y,
+  }
 }
 
 function emitHeatmapRegionHover(feature) {
@@ -1066,6 +1086,8 @@ onMounted(() => {
     setMapMovingClass(true)
   })
 
+  map.value.on('move', updateActiveReportPopupPosition)
+
   map.value.on('moveend', () => {
     setMapMovingClass(false)
 
@@ -1086,6 +1108,7 @@ onMounted(() => {
 
   map.value.on('click', () => {
     reportMenu.value = null
+    activeReportPopup.value = null
   })
 })
 
@@ -1194,6 +1217,42 @@ watch(
       >
         Report gap here
       </button>
+    </div>
+
+    <div
+      v-if="activeReportPopup"
+      class="community-report-overlay"
+      :style="{ left: `${activeReportPopup.x}px`, top: `${activeReportPopup.y}px` }"
+      @mousedown.stop
+      @mouseup.stop
+      @click.stop
+      @touchstart.stop
+      @touchend.stop
+    >
+      <article class="report-popup-card">
+        <header class="report-popup-header">
+          <span class="report-popup-kicker">Community report</span>
+          <span class="report-status-pill" :class="activeReportPopup.statusClass">
+            {{ activeReportPopup.status }}
+          </span>
+          <button
+            type="button"
+            class="report-popup-close"
+            aria-label="Close report"
+            @mousedown.stop.prevent="activeReportPopup = null"
+            @touchstart.stop.prevent="activeReportPopup = null"
+            @click.stop.prevent="activeReportPopup = null"
+          >
+            ×
+          </button>
+        </header>
+        <strong class="report-popup-title">{{ activeReportPopup.reportType }} report</strong>
+        <p class="report-popup-description">{{ activeReportPopup.description }}</p>
+        <footer class="report-popup-meta">
+          <span>Reported</span>
+          <time>{{ activeReportPopup.reportedAt }}</time>
+        </footer>
+      </article>
     </div>
 
     <div v-if="!hasToken" class="mapbox-token-empty panel">
