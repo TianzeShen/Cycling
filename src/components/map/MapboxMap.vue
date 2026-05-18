@@ -6,8 +6,11 @@ import { pointToFeature, toMapboxLngLat } from '../../utils/mapCoordinates'
 import {
   getReportLikeSession,
   getReportLikes,
+  getRideSmartUserId,
   incrementReportLikes,
+  likeReport,
   saveReportLikeSession,
+  setReportLikes,
 } from '../../services/api'
 
 const props = defineProps({
@@ -378,6 +381,7 @@ function reportToFeature(report, index) {
     reportedAt: report.reported_at || '',
     votes,
     heatWeight: Math.max(0.25, Math.min(1, votes / 50)),
+    userId: report.user_id || report.userId || '',
   })
 }
 
@@ -676,11 +680,16 @@ function showReportPopup(event) {
     ? new Date(properties.reportedAt).toLocaleString()
     : 'Time pending'
   const reportType = properties.type || 'gap'
-  const status = properties.status || 'submitted'
-  const statusKey = String(properties.status || 'submitted').toLowerCase()
-  const statusClass = ['pending', 'validated', 'resolved', 'submitted'].includes(statusKey)
+  const currentUserId = getRideSmartUserId()
+  const reportUserId = properties.userId || properties.user_id || ''
+  const isOwnReport = Boolean(reportUserId && currentUserId && reportUserId === currentUserId)
+  const rawStatus = String(properties.status || 'submitted').toLowerCase()
+  const statusKey = rawStatus === 'pending' ? 'submitted' : rawStatus
+  const statusClass = ['validated', 'resolved', 'submitted'].includes(statusKey)
     ? statusKey
     : 'submitted'
+  const showStatusPill = statusKey !== 'submitted' || isOwnReport
+  const status = statusKey === 'submitted' ? 'Submitted' : properties.status
   const point = map.value.project(coordinates)
   const reportId = properties.id
   const existingLikeSession = getReportLikeSession(reportId)
@@ -700,6 +709,7 @@ function showReportPopup(event) {
     reportType,
     status,
     statusClass,
+    showStatusPill,
     x: point.x,
     y: point.y,
   }
@@ -744,7 +754,7 @@ function startReportLikeTimer() {
   }, 50)
 }
 
-function likeActiveReport() {
+async function likeActiveReport() {
   if (!activeReportPopup.value || activeReportPopup.value.likeProgress <= 0) {
     return
   }
@@ -763,8 +773,22 @@ function likeActiveReport() {
     startReportLikeTimer()
   }
 
-  const likes = incrementReportLikes(activeReportPopup.value.reportId)
-  const burstId = `${activeReportPopup.value.reportId}-${Date.now()}-${Math.random()}`
+  const reportId = activeReportPopup.value.reportId
+  let likes = activeReportPopup.value.likes
+
+  try {
+    const response = await likeReport(reportId)
+
+    if (response && typeof response.like_count === 'number') {
+      likes = setReportLikes(reportId, response.like_count)
+    } else {
+      likes = incrementReportLikes(reportId)
+    }
+  } catch (error) {
+    likes = incrementReportLikes(reportId)
+  }
+
+  const burstId = `${reportId}-${Date.now()}-${Math.random()}`
   activeReportPopup.value = {
     ...activeReportPopup.value,
     likes,
@@ -1486,7 +1510,11 @@ watch(
       <article class="report-popup-card">
         <header class="report-popup-header">
           <span class="report-popup-kicker">Community report</span>
-          <span class="report-status-pill" :class="activeReportPopup.statusClass">
+          <span
+            v-if="activeReportPopup.showStatusPill"
+            class="report-status-pill"
+            :class="activeReportPopup.statusClass"
+          >
             {{ activeReportPopup.status }}
           </span>
           <button

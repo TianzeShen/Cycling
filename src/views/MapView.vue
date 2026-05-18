@@ -6,7 +6,7 @@ import RouteCard from '../components/RouteCard.vue'
 import ScorePanel from '../components/ScorePanel.vue'
 import {
   defaultCoordinates,
-  getMyReports,
+  getAllReports,
   getMelbourneSa2Heatmap,
   recommendRoute,
   reverseMapboxPlace,
@@ -104,7 +104,7 @@ const locationStatus = ref(
   shouldRestoreMapState ? savedMapState.locationStatus || 'Route restored from this tab.' : 'Locating your current position...',
 )
 const currentLocationLabel = ref(shouldRestoreMapState ? savedMapState.currentLocationLabel || '' : '')
-const myReports = ref([])
+const publicReports = ref([])
 const tripStatus = ref('idle')
 const tripStartedAt = ref(null)
 const tripElapsedSeconds = ref(0)
@@ -1028,12 +1028,12 @@ function handleLocationFound(location) {
   locationStatus.value = 'Using your current location as the start point.'
 }
 
-async function loadMyReports() {
+async function loadPublicReports() {
   try {
-    const response = await getMyReports()
-    myReports.value = Array.isArray(response.reports) ? response.reports : []
+    const response = await getAllReports()
+    publicReports.value = Array.isArray(response.reports) ? response.reports : []
   } catch (error) {
-    myReports.value = []
+    publicReports.value = []
   }
 }
 
@@ -1119,7 +1119,7 @@ onMounted(() => {
     locateUserOnLoad()
   }
 
-  loadMyReports()
+  loadPublicReports()
   document.addEventListener('pointerdown', handleDocumentPointerDown)
 })
 
@@ -1307,7 +1307,7 @@ const mobileAnalysisStyle = computed(() => ({
         :alerts="routeAlerts"
         :start-point="startCoordinate"
         :end-point="endCoordinate"
-        :reports="myReports"
+        :reports="publicReports"
         :show-report-markers="showReportMarkers"
         @location-found="handleLocationFound"
         @heatmap-region-hover="handleHeatmapRegionHover"

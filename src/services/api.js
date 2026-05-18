@@ -326,6 +326,18 @@ export function getReportLikes(reportId) {
   return Number(getStoredReportLikes()[reportId] || 0)
 }
 
+export function setReportLikes(reportId, likesCount) {
+  if (!reportId || typeof window === 'undefined') {
+    return 0
+  }
+
+  const likes = getStoredReportLikes()
+  likes[reportId] = Number(likesCount || 0)
+  window.localStorage.setItem(RIDESMART_REPORT_LIKES_KEY, JSON.stringify(likes))
+
+  return likes[reportId]
+}
+
 export function incrementReportLikes(reportId) {
   if (!reportId || typeof window === 'undefined') {
     return 0
@@ -365,6 +377,20 @@ export function getMyReports() {
   })
 
   return getJson('/api/reports', params)
+}
+
+export function getAllReports() {
+  const params = new URLSearchParams({
+    user_id: getRideSmartUserId(),
+  })
+
+  return getJson('/api/reports/all', params)
+}
+
+export function likeReport(reportId) {
+  return postJson(`/api/reports/${encodeURIComponent(reportId)}/like`, {
+    user_id: getRideSmartUserId(),
+  })
 }
 
 export function updateReport(reportId, { description = '' }) {
