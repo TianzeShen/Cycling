@@ -5,18 +5,26 @@ from sqlalchemy import text
 try:
     from Backend.database import fetch_all, fetch_one, get_transaction_connection
     from Backend.schemas import (
+        PublicReportListResponse,
+        PublicReportResponse,
         ReportCreateRequest,
         ReportDeleteResponse,
+        ReportLikeResponse,
         ReportListResponse,
+        ReportLikeRequest,
         ReportResponse,
         ReportUpdateRequest,
     )
 except ModuleNotFoundError:
     from database import fetch_all, fetch_one, get_transaction_connection
     from schemas import (
+        PublicReportListResponse,
+        PublicReportResponse,
         ReportCreateRequest,
         ReportDeleteResponse,
+        ReportLikeResponse,
         ReportListResponse,
+        ReportLikeRequest,
         ReportResponse,
         ReportUpdateRequest,
     )
@@ -161,6 +169,44 @@ def list_reports_for_user(user_id: str) -> ReportListResponse:
     return ReportListResponse(reports=[ReportResponse(**row) for row in rows])
 
 
+def list_all_reports(user_id: str) -> PublicReportListResponse:
+    query = """
+        SELECT
+            ir.report_id::text AS report_id,
+            ir.user_id::text AS user_id,
+            ir.segment_id::text AS segment_id,
+            ir.issue_type::text AS issue_type,
+            ir.status::text AS status,
+            ir.lat AS latitude,
+            ir.lng AS longitude,
+            ir.description,
+            ir.reported_at,
+            COUNT(rl.like_id)::int AS like_count,
+            COALESCE(
+                BOOL_OR(rl.user_id = CAST(:user_id AS uuid)),
+                false
+            ) AS liked_by_current_user
+        FROM ridesmart.issue_report ir
+        LEFT JOIN ridesmart.report_like rl
+          ON rl.report_id = ir.report_id
+        GROUP BY
+            ir.report_id,
+            ir.user_id,
+            ir.segment_id,
+            ir.issue_type,
+            ir.status,
+            ir.lat,
+            ir.lng,
+            ir.description,
+            ir.reported_at
+        ORDER BY ir.reported_at DESC
+    """
+    rows = fetch_all(query, {"user_id": user_id})
+    return PublicReportListResponse(
+        reports=[PublicReportResponse(**row) for row in rows]
+    )
+
+
 def update_report(report_id: str, payload: ReportUpdateRequest) -> ReportResponse:
     existing_report = get_owned_report(report_id, payload.user_id)
     if existing_report is None:
@@ -286,6 +332,63 @@ def delete_report(report_id: str, user_id: str) -> ReportDeleteResponse:
         )
 
     return ReportDeleteResponse(report_id=report_id)
+
+
+def like_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeResponse:
+    with get_transaction_connection() as connection:
+        ensure_local_uuid_user_exists(connection, payload.user_id)
+        ensure_report_exists(connection, report_id)
+        connection.execute(
+            text(
+                """
+                INSERT INTO ridesmart.report_like (
+                    like_id,
+                    report_id,
+                    user_id,
+                    liked_at
+                )
+                VALUES (
+                    gen_random_uuid(),
+                    CAST(:report_id AS uuid),
+                    CAST(:user_id AS uuid),
+                    NOW()
+                )
+                ON CONFLICT (report_id, user_id) DO NOTHING
+                """
+            ),
+            {
+                "report_id": report_id,
+                "user_id": payload.user_id,
+            },
+        )
+        return fetch_report_like_state(
+            connection=connection,
+            report_id=report_id,
+            user_id=payload.user_id,
+        )
+
+
+def unlike_report(report_id: str, user_id: str) -> ReportLikeResponse:
+    with get_transaction_connection() as connection:
+        ensure_report_exists(connection, report_id)
+        connection.execute(
+            text(
+                """
+                DELETE FROM ridesmart.report_like
+                WHERE report_id = CAST(:report_id AS uuid)
+                  AND user_id = CAST(:user_id AS uuid)
+                """
+            ),
+            {
+                "report_id": report_id,
+                "user_id": user_id,
+            },
+        )
+        return fetch_report_like_state(
+            connection=connection,
+            report_id=report_id,
+            user_id=user_id,
+        )
 
 
 def find_nearest_segment_id(latitude: float, longitude: float) -> str | None:
@@ -418,6 +521,58 @@ def get_owned_report(report_id: str, user_id: str) -> dict | None:
         LIMIT 1
     """
     return fetch_one(query, {"report_id": report_id, "user_id": user_id})
+
+
+def ensure_report_exists(connection, report_id: str) -> None:
+    exists = connection.execute(
+        text(
+            """
+            SELECT 1
+            FROM ridesmart.issue_report
+            WHERE report_id = CAST(:report_id AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"report_id": report_id},
+    ).scalar()
+    if not exists:
+        raise LookupError("Report not found.")
+
+
+def fetch_report_like_state(
+    connection,
+    report_id: str,
+    user_id: str,
+) -> ReportLikeResponse:
+    row = (
+        connection.execute(
+            text(
+                """
+                SELECT
+                    ir.report_id::text AS report_id,
+                    COUNT(rl.like_id)::int AS like_count,
+                    COALESCE(
+                        BOOL_OR(rl.user_id = CAST(:user_id AS uuid)),
+                        false
+                    ) AS liked_by_current_user
+                FROM ridesmart.issue_report ir
+                LEFT JOIN ridesmart.report_like rl
+                  ON rl.report_id = ir.report_id
+                WHERE ir.report_id = CAST(:report_id AS uuid)
+                GROUP BY ir.report_id
+                """
+            ),
+            {
+                "report_id": report_id,
+                "user_id": user_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise LookupError("Report not found.")
+    return ReportLikeResponse(**dict(row))
 
 
 def sync_lane_gap_for_report_update(

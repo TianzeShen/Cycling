@@ -187,6 +187,15 @@ class ReportListResponse(BaseModel):
     reports: list[ReportResponse] = Field(default_factory=list)
 
 
+class PublicReportResponse(ReportResponse):
+    like_count: int = 0
+    liked_by_current_user: bool = False
+
+
+class PublicReportListResponse(BaseModel):
+    reports: list[PublicReportResponse] = Field(default_factory=list)
+
+
 class ReportUpdateRequest(BaseModel):
     user_id: str = Field(..., description="Stable client-generated UUID stored in localStorage.")
     latitude: float | None = Field(default=None, description="Updated report latitude in WGS84.")
@@ -233,3 +242,20 @@ class ReportUpdateRequest(BaseModel):
 class ReportDeleteResponse(BaseModel):
     report_id: str
     deleted: bool = True
+
+
+class ReportLikeRequest(BaseModel):
+    user_id: str = Field(..., description="Stable client-generated UUID stored in localStorage.")
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_like_user_id(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("user_id must not be empty.")
+        return value
+
+
+class ReportLikeResponse(BaseModel):
+    report_id: str
+    like_count: int = 0
+    liked_by_current_user: bool
