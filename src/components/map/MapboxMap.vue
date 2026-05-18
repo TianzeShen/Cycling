@@ -3,6 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { pointToFeature, toMapboxLngLat } from '../../utils/mapCoordinates'
+import {
+  getReportLikeSession,
+  getReportLikes,
+  incrementReportLikes,
+  saveReportLikeSession,
+} from '../../services/api'
 
 const props = defineProps({
   mode: {
@@ -67,6 +73,9 @@ const mapReady = ref(false)
 const geolocate = ref(null)
 const reportMenu = ref(null)
 const activeReportPopup = ref(null)
+const reportLikeBursts = ref([])
+const REPORT_LIKE_WINDOW_MS = 5000
+let reportLikeTimer = null
 let longPressTimer = null
 let longPressPoint = null
 let heatmapHoverFrame = null
@@ -100,6 +109,13 @@ function clearPendingHeatmapHover() {
   }
 
   pendingHeatmapHoverFeature = null
+}
+
+function clearReportLikeTimer() {
+  if (reportLikeTimer) {
+    window.clearInterval(reportLikeTimer)
+    reportLikeTimer = null
+  }
 }
 
 function setMapMovingClass(isMoving) {
@@ -560,10 +576,20 @@ function showReportPopup(event) {
     ? statusKey
     : 'submitted'
   const point = map.value.project(coordinates)
+  const reportId = properties.id
+  const existingLikeSession = getReportLikeSession(reportId)
+  const likeWindowEndsAt = existingLikeSession?.endsAt || null
+  const remainingLikeWindow = likeWindowEndsAt ? Math.max(likeWindowEndsAt - Date.now(), 0) : null
 
   activeReportPopup.value = {
     coordinates,
     description,
+    likeProgress:
+      remainingLikeWindow === null ? 100 : (remainingLikeWindow / REPORT_LIKE_WINDOW_MS) * 100,
+    likeWindowEndsAt,
+    likeWindowStarted: Boolean(existingLikeSession),
+    likes: getReportLikes(reportId),
+    reportId,
     reportedAt,
     reportType,
     status,
@@ -571,6 +597,11 @@ function showReportPopup(event) {
     x: point.x,
     y: point.y,
   }
+
+  if (remainingLikeWindow > 0) {
+    startReportLikeTimer()
+  }
+
 }
 
 function updateActiveReportPopupPosition() {
@@ -584,6 +615,59 @@ function updateActiveReportPopupPosition() {
     x: point.x,
     y: point.y,
   }
+}
+
+function startReportLikeTimer() {
+  clearReportLikeTimer()
+
+  reportLikeTimer = window.setInterval(() => {
+    if (!activeReportPopup.value) {
+      clearReportLikeTimer()
+      return
+    }
+
+    const remaining = Math.max(activeReportPopup.value.likeWindowEndsAt - Date.now(), 0)
+    activeReportPopup.value = {
+      ...activeReportPopup.value,
+      likeProgress: (remaining / REPORT_LIKE_WINDOW_MS) * 100,
+    }
+
+    if (remaining <= 0) {
+      clearReportLikeTimer()
+    }
+  }, 50)
+}
+
+function likeActiveReport() {
+  if (!activeReportPopup.value || activeReportPopup.value.likeProgress <= 0) {
+    return
+  }
+
+  if (!activeReportPopup.value.likeWindowStarted) {
+    const likeWindowEndsAt = Date.now() + REPORT_LIKE_WINDOW_MS
+    saveReportLikeSession(activeReportPopup.value.reportId, {
+      startedAt: Date.now(),
+      endsAt: likeWindowEndsAt,
+    })
+    activeReportPopup.value = {
+      ...activeReportPopup.value,
+      likeWindowEndsAt,
+      likeWindowStarted: true,
+    }
+    startReportLikeTimer()
+  }
+
+  const likes = incrementReportLikes(activeReportPopup.value.reportId)
+  const burstId = `${activeReportPopup.value.reportId}-${Date.now()}-${Math.random()}`
+  activeReportPopup.value = {
+    ...activeReportPopup.value,
+    likes,
+  }
+  reportLikeBursts.value = [...reportLikeBursts.value, burstId]
+
+  window.setTimeout(() => {
+    reportLikeBursts.value = reportLikeBursts.value.filter((id) => id !== burstId)
+  }, 700)
 }
 
 function emitHeatmapRegionHover(feature) {
@@ -1109,12 +1193,14 @@ onMounted(() => {
   map.value.on('click', () => {
     reportMenu.value = null
     activeReportPopup.value = null
+    clearReportLikeTimer()
   })
 })
 
 onBeforeUnmount(() => {
   clearLongPressTimer()
   clearPendingHeatmapHover()
+  clearReportLikeTimer()
   setMapMovingClass(false)
   map.value?.remove()
   map.value = null
@@ -1252,6 +1338,45 @@ watch(
           <span>Reported</span>
           <time>{{ activeReportPopup.reportedAt }}</time>
         </footer>
+        <div class="report-like-section">
+          <div class="report-like-copy">
+            <span>Support window</span>
+            <strong>{{ activeReportPopup.likes }} like{{ activeReportPopup.likes === 1 ? '' : 's' }}</strong>
+          </div>
+          <div class="report-like-progress" aria-hidden="true">
+            <span :style="{ width: `${activeReportPopup.likeProgress}%` }"></span>
+          </div>
+          <button
+            type="button"
+            class="report-like-button"
+            :class="{ 'report-like-button-active': activeReportPopup.likeWindowStarted && activeReportPopup.likeProgress > 0 }"
+            :disabled="activeReportPopup.likeProgress <= 0"
+            @mousedown.stop.prevent="likeActiveReport"
+            @touchstart.stop.prevent="likeActiveReport"
+            @click.stop.prevent
+          >
+            <svg class="report-like-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M10.2 10.2V20H6.8A1.8 1.8 0 0 1 5 18.2v-6.1a1.8 1.8 0 0 1 1.8-1.9h3.4Zm1.7 9.8V10.1l2.3-5a1.8 1.8 0 0 1 3.4.9v3.1h2.5a2 2 0 0 1 1.9 2.5l-1.4 5.6a3.6 3.6 0 0 1-3.5 2.8h-5.2Z"
+              />
+            </svg>
+            {{
+              activeReportPopup.likeProgress <= 0
+                ? 'Window closed'
+                : activeReportPopup.likeWindowStarted
+                  ? 'Like +1'
+                  : 'Start liking'
+            }}
+          </button>
+          <span
+            v-for="burst in reportLikeBursts"
+            :key="burst"
+            class="report-like-burst"
+            aria-hidden="true"
+          >
+            +1
+          </span>
+        </div>
       </article>
     </div>
 

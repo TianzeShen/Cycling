@@ -1,6 +1,8 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ridesmart-71t5.onrender.com'
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const RIDESMART_USER_ID_KEY = 'ridesmart_user_id'
+const RIDESMART_REPORT_LIKES_KEY = 'ridesmart_report_likes'
+const RIDESMART_REPORT_LIKE_SESSIONS_KEY = 'ridesmart_report_like_sessions'
 
 const defaultCoordinates = {
   start_lat: -37.8136,
@@ -290,6 +292,71 @@ export function createReport({ latitude, longitude, issueType = 'gap', descripti
     issue_type: issueType,
     description,
   })
+}
+
+function getStoredReportLikes() {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(RIDESMART_REPORT_LIKES_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function getStoredReportLikeSessions() {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(RIDESMART_REPORT_LIKE_SESSIONS_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+export function getReportLikes(reportId) {
+  if (!reportId) {
+    return 0
+  }
+
+  return Number(getStoredReportLikes()[reportId] || 0)
+}
+
+export function incrementReportLikes(reportId) {
+  if (!reportId || typeof window === 'undefined') {
+    return 0
+  }
+
+  const likes = getStoredReportLikes()
+  const nextLikes = Number(likes[reportId] || 0) + 1
+  likes[reportId] = nextLikes
+  window.localStorage.setItem(RIDESMART_REPORT_LIKES_KEY, JSON.stringify(likes))
+
+  return nextLikes
+}
+
+export function getReportLikeSession(reportId) {
+  if (!reportId) {
+    return null
+  }
+
+  return getStoredReportLikeSessions()[reportId] || null
+}
+
+export function saveReportLikeSession(reportId, session) {
+  if (!reportId || typeof window === 'undefined') {
+    return null
+  }
+
+  const sessions = getStoredReportLikeSessions()
+  sessions[reportId] = session
+  window.localStorage.setItem(RIDESMART_REPORT_LIKE_SESSIONS_KEY, JSON.stringify(sessions))
+
+  return session
 }
 
 export function getMyReports() {
