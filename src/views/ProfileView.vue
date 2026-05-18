@@ -85,7 +85,7 @@ const safetyPoints = computed(() =>
     const basePoints = 10
     const validationBonus = status === 'validated' || status === 'resolved' ? 15 : 0
     const impactBonus = status === 'resolved' ? 20 : 0
-    const likeBonus = getReportLikes(report.report_id)
+    const likeBonus = getReportLikes(report.report_id) ?? 0
 
     return total + basePoints + validationBonus + impactBonus + likeBonus
   }, 0),
@@ -94,7 +94,7 @@ const safetyPoints = computed(() =>
 const routesImproved = computed(() => validatedReports.value + resolvedReports.value)
 
 const likesReceived = computed(() =>
-  reports.value.reduce((total, report) => total + getReportLikes(report.report_id), 0),
+  reports.value.reduce((total, report) => total + (getReportLikes(report.report_id) ?? 0), 0),
 )
 
 const stats = computed(() => ({

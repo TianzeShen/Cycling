@@ -320,10 +320,16 @@ function getStoredReportLikeSessions() {
 
 export function getReportLikes(reportId) {
   if (!reportId) {
-    return 0
+    return null
   }
 
-  return Number(getStoredReportLikes()[reportId] || 0)
+  const storedLikes = getStoredReportLikes()
+
+  if (!Object.prototype.hasOwnProperty.call(storedLikes, reportId)) {
+    return null
+  }
+
+  return Number(storedLikes[reportId] || 0)
 }
 
 export function setReportLikes(reportId, likesCount) {
@@ -387,9 +393,10 @@ export function getAllReports() {
   return getJson('/api/reports/all', params)
 }
 
-export function likeReport(reportId) {
+export function likeReport(reportId, likeCount) {
   return postJson(`/api/reports/${encodeURIComponent(reportId)}/like`, {
     user_id: getRideSmartUserId(),
+    like_count: likeCount,
   })
 }
 

@@ -76,7 +76,13 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['location-found', 'heatmap-region-hover', 'report-location', 'route-selected'])
+const emit = defineEmits([
+  'location-found',
+  'heatmap-region-hover',
+  'report-location',
+  'route-selected',
+  'report-like-updated',
+])
 
 const mapContainer = ref(null)
 const map = ref(null)
@@ -371,6 +377,10 @@ function reportToFeature(report, index) {
     ? [latitude, longitude]
     : report.location || [-37.805 + index * 0.007, 144.955 + index * 0.009]
   const votes = Number(report.validation_count ?? report.votes ?? 1)
+  const likes = Number(report.like_count ?? report.likes ?? report.likeCount ?? 0)
+  const likedByCurrentUser = Boolean(
+    report.liked_by_current_user ?? report.likedByCurrentUser ?? false,
+  )
 
   return pointToFeature(location, {
     id: report.report_id || report.id,
@@ -380,6 +390,11 @@ function reportToFeature(report, index) {
     description: report.description || '',
     reportedAt: report.reported_at || '',
     votes,
+    likes,
+    like_count: likes,
+    likeCount: likes,
+    liked_by_current_user: likedByCurrentUser,
+    likedByCurrentUser,
     heatWeight: Math.max(0.25, Math.min(1, votes / 50)),
     userId: report.user_id || report.userId || '',
   })
@@ -696,14 +711,28 @@ function showReportPopup(event) {
   const likeWindowEndsAt = existingLikeSession?.endsAt || null
   const remainingLikeWindow = likeWindowEndsAt ? Math.max(likeWindowEndsAt - Date.now(), 0) : null
 
+  const backendLikes = Number(
+    properties.likes ?? properties.like_count ?? properties.likeCount ?? properties.likes_count ?? 0,
+  )
+  const likedByCurrentUser = Boolean(
+    properties.liked_by_current_user ?? properties.likedByCurrentUser ?? false,
+  )
+  const submittedSession = Boolean(existingLikeSession?.submitted)
+  const pendingLikes = submittedSession ? 0 : Number(existingLikeSession?.pendingLikes || 0)
+  const latestLikes = getReportLikes(reportId)
+  const likes = latestLikes !== null ? latestLikes : backendLikes
+
   activeReportPopup.value = {
     coordinates,
     description,
     likeProgress:
       remainingLikeWindow === null ? 100 : (remainingLikeWindow / REPORT_LIKE_WINDOW_MS) * 100,
     likeWindowEndsAt,
-    likeWindowStarted: Boolean(existingLikeSession),
-    likes: getReportLikes(reportId),
+    likeWindowStarted: Boolean(existingLikeSession) && remainingLikeWindow > 0 && !submittedSession,
+    likedByCurrentUser: likedByCurrentUser || submittedSession,
+    backendLikes,
+    pendingLikes,
+    likes,
     reportId,
     reportedAt,
     reportType,
@@ -716,6 +745,8 @@ function showReportPopup(event) {
 
   if (remainingLikeWindow > 0) {
     startReportLikeTimer()
+  } else if (Boolean(existingLikeSession?.pendingLikes) && !submittedSession) {
+    submitReportLikeSession(reportId)
   }
 
 }
@@ -750,49 +781,124 @@ function startReportLikeTimer() {
 
     if (remaining <= 0) {
       clearReportLikeTimer()
+      submitReportLikeSession(activeReportPopup.value.reportId)
     }
   }, 50)
 }
 
-async function likeActiveReport() {
-  if (!activeReportPopup.value || activeReportPopup.value.likeProgress <= 0) {
+async function submitReportLikeSession(reportId) {
+  if (!reportId) {
     return
   }
 
-  if (!activeReportPopup.value.likeWindowStarted) {
-    const likeWindowEndsAt = Date.now() + REPORT_LIKE_WINDOW_MS
-    saveReportLikeSession(activeReportPopup.value.reportId, {
-      startedAt: Date.now(),
-      endsAt: likeWindowEndsAt,
-    })
+  const session = getReportLikeSession(reportId)
+  const pendingLikes = session?.pendingLikes ? Number(session.pendingLikes) : 0
+  const alreadySubmitted = Boolean(session?.submitted)
+
+  if (alreadySubmitted || pendingLikes <= 0) {
+    return
+  }
+
+  let response
+  try {
+    response = await likeReport(reportId, Math.min(Math.max(pendingLikes, 1), 100))
+  } catch (error) {
+    if (error?.status === 409) {
+      saveReportLikeSession(reportId, {
+        ...session,
+        pendingLikes: 0,
+        submitted: true,
+      })
+      if (activeReportPopup.value?.reportId === reportId) {
+        activeReportPopup.value = {
+          ...activeReportPopup.value,
+          likedByCurrentUser: true,
+          pendingLikes: 0,
+          likeWindowStarted: false,
+          likeProgress: 0,
+        }
+      }
+      emit('report-like-updated', {
+        reportId,
+        likeCount: activeReportPopup.value?.backendLikes ?? activeReportPopup.value?.likes ?? 0,
+        likedByCurrentUser: true,
+      })
+    }
+    return
+  }
+
+  const returnedLikes = Number(
+    response.like_count ?? response.likes ?? response.likeCount ?? 0,
+  )
+  const likedByCurrentUser = Boolean(
+    response.liked_by_current_user ?? response.likedByCurrentUser ?? false,
+  )
+
+  saveReportLikeSession(reportId, {
+    ...session,
+    pendingLikes: 0,
+    submitted: true,
+  })
+
+  if (Number.isFinite(returnedLikes) && returnedLikes >= 0) {
+    setReportLikes(reportId, returnedLikes)
+  }
+
+  if (activeReportPopup.value?.reportId === reportId) {
     activeReportPopup.value = {
       ...activeReportPopup.value,
-      likeWindowEndsAt,
-      likeWindowStarted: true,
+      likedByCurrentUser,
+      backendLikes: Number.isFinite(returnedLikes) ? returnedLikes : activeReportPopup.value.backendLikes,
+      pendingLikes: 0,
+      likes: Number.isFinite(returnedLikes) ? returnedLikes : activeReportPopup.value.likes,
+      likeWindowStarted: false,
+      likeProgress: 0,
     }
-    startReportLikeTimer()
+  }
+
+  emit('report-like-updated', {
+    reportId,
+    likeCount: Number.isFinite(returnedLikes) ? returnedLikes : activeReportPopup.value?.likes ?? 0,
+    likedByCurrentUser,
+  })
+}
+
+async function likeActiveReport() {
+  if (!activeReportPopup.value || activeReportPopup.value.likeProgress <= 0 || activeReportPopup.value.likedByCurrentUser) {
+    return
   }
 
   const reportId = activeReportPopup.value.reportId
-  let likes = activeReportPopup.value.likes
+  const existingLikeSession = getReportLikeSession(reportId)
+  const startedAt = existingLikeSession?.startedAt || Date.now()
+  const likeWindowEndsAt = existingLikeSession?.endsAt || Date.now() + REPORT_LIKE_WINDOW_MS
+  const currentPendingLikes = Number(existingLikeSession?.pendingLikes ?? activeReportPopup.value.pendingLikes ?? 0)
+  const pendingLikes = Math.min(currentPendingLikes + 1, 100)
+  const remainingLikeWindow = likeWindowEndsAt ? Math.max(likeWindowEndsAt - Date.now(), 0) : null
 
-  try {
-    const response = await likeReport(reportId)
+  saveReportLikeSession(reportId, {
+    startedAt,
+    endsAt: likeWindowEndsAt,
+    pendingLikes,
+    submitted: false,
+  })
 
-    if (response && typeof response.like_count === 'number') {
-      likes = setReportLikes(reportId, response.like_count)
-    } else {
-      likes = incrementReportLikes(reportId)
-    }
-  } catch (error) {
-    likes = incrementReportLikes(reportId)
-  }
+  const backendLikes = Number(activeReportPopup.value.backendLikes || 0)
+  const likes = backendLikes + pendingLikes
 
-  const burstId = `${reportId}-${Date.now()}-${Math.random()}`
   activeReportPopup.value = {
     ...activeReportPopup.value,
+    likeWindowEndsAt,
+    likeWindowStarted: true,
+    pendingLikes,
     likes,
+    likeProgress:
+      remainingLikeWindow === null ? 100 : (remainingLikeWindow / REPORT_LIKE_WINDOW_MS) * 100,
   }
+
+  startReportLikeTimer()
+
+  const burstId = `${reportId}-${Date.now()}-${Math.random()}`
   reportLikeBursts.value = [...reportLikeBursts.value, burstId]
 
   window.setTimeout(() => {
@@ -1546,7 +1652,7 @@ watch(
             type="button"
             class="report-like-button"
             :class="{ 'report-like-button-active': activeReportPopup.likeWindowStarted && activeReportPopup.likeProgress > 0 }"
-            :disabled="activeReportPopup.likeProgress <= 0"
+            :disabled="activeReportPopup.likeProgress <= 0 || activeReportPopup.likedByCurrentUser"
             @mousedown.stop.prevent="likeActiveReport"
             @touchstart.stop.prevent="likeActiveReport"
             @click.stop.prevent
@@ -1557,11 +1663,13 @@ watch(
               />
             </svg>
             {{
-              activeReportPopup.likeProgress <= 0
-                ? 'Window closed'
-                : activeReportPopup.likeWindowStarted
-                  ? 'Like +1'
-                  : 'Start liking'
+              activeReportPopup.likedByCurrentUser
+                ? 'Liked'
+                : activeReportPopup.likeProgress <= 0
+                  ? 'Window closed'
+                  : activeReportPopup.likeWindowStarted
+                    ? 'Like +1'
+                    : 'Start liking'
             }}
           </button>
           <span

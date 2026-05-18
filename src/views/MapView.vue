@@ -1047,6 +1047,20 @@ function handleReportLocation(location) {
   })
 }
 
+function handleReportLikeUpdated({ reportId, likeCount, likedByCurrentUser }) {
+  publicReports.value = publicReports.value.map((report) => {
+    if (report.id === reportId || report.report_id === reportId) {
+      return {
+        ...report,
+        like_count: likeCount,
+        likes: likeCount,
+        liked_by_current_user: likedByCurrentUser,
+      }
+    }
+    return report
+  })
+}
+
 async function useCurrentLocationAsStart() {
   start.value = 'Resolving current address...'
   if (!currentLocationLabel.value) {
@@ -1312,6 +1326,7 @@ const mobileAnalysisStyle = computed(() => ({
         @location-found="handleLocationFound"
         @heatmap-region-hover="handleHeatmapRegionHover"
         @report-location="handleReportLocation"
+        @report-like-updated="handleReportLikeUpdated"
         @route-selected="setActiveRoute"
       />
       <div v-else class="glass-panel locating-panel">
