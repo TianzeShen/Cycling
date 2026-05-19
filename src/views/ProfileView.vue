@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   deleteReport,
+  getAllReports,
   getMyReports,
   getReportLikes,
   getRideSmartUserId,
@@ -98,6 +99,39 @@ function getProfileReportLikes(report) {
   const localLikes = getReportLikes(reportId)
 
   return Math.max(backendLikes ?? 0, localLikes ?? 0)
+}
+
+function mergeReportLikesFromPublicReports(myReports, publicReports) {
+  const publicReportsById = new Map(
+    publicReports
+      .map((report) => [report.report_id || report.id, report])
+      .filter(([reportId]) => Boolean(reportId)),
+  )
+
+  return myReports.map((report) => {
+    const reportId = report.report_id || report.id
+    const publicReport = publicReportsById.get(reportId)
+
+    if (!publicReport) {
+      return report
+    }
+
+    const publicLikes = getBackendReportLikes(publicReport)
+
+    if (publicLikes === null) {
+      return report
+    }
+
+    return {
+      ...report,
+      like_count: publicLikes,
+      likes: publicLikes,
+      liked_by_current_user:
+        publicReport.liked_by_current_user ?? report.liked_by_current_user ?? report.likedByCurrentUser,
+      likedByCurrentUser:
+        publicReport.likedByCurrentUser ?? publicReport.liked_by_current_user ?? report.likedByCurrentUser,
+    }
+  })
 }
 
 const safetyPoints = computed(() =>
@@ -199,8 +233,22 @@ async function loadProfileReports({ silent = false } = {}) {
   }
 
   try {
-    const response = await getMyReports()
-    const nextReports = Array.isArray(response.reports) ? response.reports : []
+    const [myReportsResult, publicReportsResult] = await Promise.allSettled([
+      getMyReports(),
+      getAllReports(),
+    ])
+
+    if (myReportsResult.status !== 'fulfilled') {
+      throw myReportsResult.reason
+    }
+
+    const myReports = Array.isArray(myReportsResult.value.reports) ? myReportsResult.value.reports : []
+    const publicReports =
+      publicReportsResult.status === 'fulfilled' && Array.isArray(publicReportsResult.value.reports)
+        ? publicReportsResult.value.reports
+        : []
+    const nextReports = mergeReportLikesFromPublicReports(myReports, publicReports)
+
     nextReports.forEach((report) => {
       const reportId = report.report_id || report.id
       const backendLikes = getBackendReportLikes(report)
