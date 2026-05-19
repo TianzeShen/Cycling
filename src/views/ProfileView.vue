@@ -1,7 +1,14 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { deleteReport, getMyReports, getReportLikes, getRideSmartUserId, updateReport } from '../services/api'
+import {
+  deleteReport,
+  getMyReports,
+  getReportLikes,
+  getRideSmartUserId,
+  setReportLikes,
+  updateReport,
+} from '../services/api'
 
 const userId = getRideSmartUserId()
 const reports = ref([])
@@ -12,6 +19,7 @@ const editingReportId = ref('')
 const editingDescription = ref('')
 const savingReportId = ref('')
 const deletingReportId = ref('')
+let profileReportsRefreshTimer = null
 
 const badgeCatalog = [
   {
@@ -79,13 +87,26 @@ const resolvedReports = computed(
   () => reports.value.filter((report) => normaliseStatus(report.status) === 'resolved').length,
 )
 
+function getBackendReportLikes(report) {
+  const likes = Number(report?.like_count ?? report?.likes ?? report?.likeCount)
+  return Number.isFinite(likes) && likes >= 0 ? likes : null
+}
+
+function getProfileReportLikes(report) {
+  const reportId = report?.report_id || report?.id
+  const backendLikes = getBackendReportLikes(report)
+  const localLikes = getReportLikes(reportId)
+
+  return Math.max(backendLikes ?? 0, localLikes ?? 0)
+}
+
 const safetyPoints = computed(() =>
   reports.value.reduce((total, report) => {
     const status = normaliseStatus(report.status)
     const basePoints = 10
     const validationBonus = status === 'validated' || status === 'resolved' ? 15 : 0
     const impactBonus = status === 'resolved' ? 20 : 0
-    const likeBonus = getReportLikes(report.report_id) ?? 0
+    const likeBonus = getProfileReportLikes(report)
 
     return total + basePoints + validationBonus + impactBonus + likeBonus
   }, 0),
@@ -94,7 +115,7 @@ const safetyPoints = computed(() =>
 const routesImproved = computed(() => validatedReports.value + resolvedReports.value)
 
 const likesReceived = computed(() =>
-  reports.value.reduce((total, report) => total + (getReportLikes(report.report_id) ?? 0), 0),
+  reports.value.reduce((total, report) => total + getProfileReportLikes(report), 0),
 )
 
 const stats = computed(() => ({
@@ -170,20 +191,42 @@ function formatCoordinate(value) {
   return Number.isFinite(number) ? number.toFixed(6) : 'N/A'
 }
 
-async function loadProfileReports() {
-  isLoading.value = true
-  errorMessage.value = ''
-  actionMessage.value = ''
+async function loadProfileReports({ silent = false } = {}) {
+  if (!silent) {
+    isLoading.value = true
+    errorMessage.value = ''
+    actionMessage.value = ''
+  }
 
   try {
     const response = await getMyReports()
-    reports.value = Array.isArray(response.reports) ? response.reports : []
+    const nextReports = Array.isArray(response.reports) ? response.reports : []
+    nextReports.forEach((report) => {
+      const reportId = report.report_id || report.id
+      const backendLikes = getBackendReportLikes(report)
+
+      if (reportId && backendLikes !== null) {
+        setReportLikes(reportId, backendLikes)
+      }
+    })
+    reports.value = nextReports
   } catch (error) {
-    reports.value = []
-    errorMessage.value = 'Unable to load your report activity right now.'
+    if (!silent) {
+      reports.value = []
+      errorMessage.value = 'Unable to load your report activity right now.'
+    }
   } finally {
-    isLoading.value = false
+    if (!silent) {
+      isLoading.value = false
+    }
   }
+}
+
+function startProfileReportsPolling() {
+  window.clearInterval(profileReportsRefreshTimer)
+  profileReportsRefreshTimer = window.setInterval(() => {
+    loadProfileReports({ silent: true })
+  }, 5000)
 }
 
 function startEditReport(report) {
@@ -248,7 +291,14 @@ async function removeReport(report) {
   }
 }
 
-onMounted(loadProfileReports)
+onMounted(() => {
+  loadProfileReports()
+  startProfileReportsPolling()
+})
+
+onBeforeUnmount(() => {
+  window.clearInterval(profileReportsRefreshTimer)
+})
 </script>
 
 <template>
