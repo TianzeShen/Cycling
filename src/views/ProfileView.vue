@@ -3,15 +3,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
   deleteReport,
-  getAllReports,
   getCurrentAuthIdentity,
   getMyReports,
-  getReportLikes,
   getRideSmartUserId,
   getStoredAuthIdentity,
   loginWithUsername,
   registerUsername,
-  setReportLikes,
   updateReport,
 } from '../services/api'
 
@@ -109,57 +106,16 @@ function getBackendReportLikes(report) {
 }
 
 function getProfileReportLikes(report) {
-  const reportId = report?.report_id || report?.id
   const backendLikes = getBackendReportLikes(report)
-  const localLikes = getReportLikes(reportId)
 
-  return Math.max(backendLikes ?? 0, localLikes ?? 0)
+  return backendLikes ?? 0
 }
 
-function mergeReportLikesFromPublicReports(myReports, publicReports) {
-  const publicReportsById = new Map(
-    publicReports
-      .map((report) => [report.report_id || report.id, report])
-      .filter(([reportId]) => Boolean(reportId)),
-  )
+const safetyPoints = computed(() => {
+  const rewardPoints = Number(authIdentity.value.reward_points)
 
-  return myReports.map((report) => {
-    const reportId = report.report_id || report.id
-    const publicReport = publicReportsById.get(reportId)
-
-    if (!publicReport) {
-      return report
-    }
-
-    const publicLikes = getBackendReportLikes(publicReport)
-
-    if (publicLikes === null) {
-      return report
-    }
-
-    return {
-      ...report,
-      like_count: publicLikes,
-      likes: publicLikes,
-      liked_by_current_user:
-        publicReport.liked_by_current_user ?? report.liked_by_current_user ?? report.likedByCurrentUser,
-      likedByCurrentUser:
-        publicReport.likedByCurrentUser ?? publicReport.liked_by_current_user ?? report.likedByCurrentUser,
-    }
-  })
-}
-
-const safetyPoints = computed(() =>
-  reports.value.reduce((total, report) => {
-    const status = normaliseStatus(report.status)
-    const basePoints = 10
-    const validationBonus = status === 'validated' || status === 'resolved' ? 15 : 0
-    const impactBonus = status === 'resolved' ? 20 : 0
-    const likeBonus = getProfileReportLikes(report)
-
-    return total + basePoints + validationBonus + impactBonus + likeBonus
-  }, 0),
-)
+  return Number.isFinite(rewardPoints) && rewardPoints >= 0 ? rewardPoints : 0
+})
 
 const routesImproved = computed(() => validatedReports.value + resolvedReports.value)
 
@@ -245,6 +201,7 @@ function applyAuthIdentity(identity) {
     user_id: identity?.user_id || getRideSmartUserId(),
     username: identity?.username || null,
     is_registered: Boolean(identity?.is_registered),
+    reward_points: Number.isFinite(Number(identity?.reward_points)) ? Number(identity.reward_points) : 0,
   }
   registerUsernameInput.value = displayUsername.value
 }
@@ -320,31 +277,8 @@ async function loadProfileReports({ silent = false } = {}) {
   }
 
   try {
-    const [myReportsResult, publicReportsResult] = await Promise.allSettled([
-      getMyReports(),
-      getAllReports(),
-    ])
-
-    if (myReportsResult.status !== 'fulfilled') {
-      throw myReportsResult.reason
-    }
-
-    const myReports = Array.isArray(myReportsResult.value.reports) ? myReportsResult.value.reports : []
-    const publicReports =
-      publicReportsResult.status === 'fulfilled' && Array.isArray(publicReportsResult.value.reports)
-        ? publicReportsResult.value.reports
-        : []
-    const nextReports = mergeReportLikesFromPublicReports(myReports, publicReports)
-
-    nextReports.forEach((report) => {
-      const reportId = report.report_id || report.id
-      const backendLikes = getBackendReportLikes(report)
-
-      if (reportId && backendLikes !== null) {
-        setReportLikes(reportId, backendLikes)
-      }
-    })
-    reports.value = nextReports
+    const response = await getMyReports()
+    reports.value = Array.isArray(response.reports) ? response.reports : []
   } catch (error) {
     if (!silent) {
       reports.value = []
@@ -360,6 +294,7 @@ async function loadProfileReports({ silent = false } = {}) {
 function startProfileReportsPolling() {
   window.clearInterval(profileReportsRefreshTimer)
   profileReportsRefreshTimer = window.setInterval(() => {
+    loadAuthIdentity({ silent: true })
     loadProfileReports({ silent: true })
   }, 5000)
 }
@@ -429,6 +364,7 @@ async function removeReport(report) {
   try {
     await deleteReport(report.report_id)
     reports.value = reports.value.filter((item) => item.report_id !== report.report_id)
+    loadAuthIdentity({ silent: true })
     actionMessage.value = 'Report deleted successfully.'
   } catch (error) {
     errorMessage.value = 'Unable to delete this report right now.'

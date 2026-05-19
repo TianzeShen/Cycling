@@ -334,6 +334,7 @@ export function getStoredAuthIdentity() {
       user_id: userId,
       username: null,
       is_registered: false,
+      reward_points: 0,
     }
   }
 
@@ -343,6 +344,7 @@ export function getStoredAuthIdentity() {
     user_id: userId,
     username: username || null,
     is_registered: window.localStorage.getItem(RIDESMART_IS_REGISTERED_KEY) === 'true',
+    reward_points: 0,
   }
 }
 
