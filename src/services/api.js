@@ -1,6 +1,8 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ridesmart-71t5.onrender.com'
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const RIDESMART_USER_ID_KEY = 'ridesmart_user_id'
+const RIDESMART_USERNAME_KEY = 'ridesmart_username'
+const RIDESMART_IS_REGISTERED_KEY = 'ridesmart_is_registered'
 const RIDESMART_REPORT_LIKES_KEY = 'ridesmart_report_likes'
 const RIDESMART_REPORT_LIKE_SESSIONS_KEY = 'ridesmart_report_like_sessions'
 
@@ -282,6 +284,90 @@ export function getRideSmartUserId() {
   window.localStorage.setItem(RIDESMART_USER_ID_KEY, userId)
 
   return userId
+}
+
+export function setRideSmartUserId(userId) {
+  if (typeof window === 'undefined' || !userId) {
+    return ''
+  }
+
+  window.localStorage.setItem(RIDESMART_USER_ID_KEY, userId)
+
+  return userId
+}
+
+export function getStoredUsername() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  return window.localStorage.getItem(RIDESMART_USERNAME_KEY) || ''
+}
+
+function saveAuthIdentity(identity) {
+  if (typeof window === 'undefined' || !identity) {
+    return identity
+  }
+
+  if (identity.user_id) {
+    setRideSmartUserId(identity.user_id)
+  }
+
+  if (identity.username) {
+    window.localStorage.setItem(RIDESMART_USERNAME_KEY, identity.username)
+  } else {
+    window.localStorage.removeItem(RIDESMART_USERNAME_KEY)
+  }
+
+  window.localStorage.setItem(RIDESMART_IS_REGISTERED_KEY, identity.is_registered ? 'true' : 'false')
+
+  return identity
+}
+
+export function getStoredAuthIdentity() {
+  const userId = getRideSmartUserId()
+
+  if (typeof window === 'undefined') {
+    return {
+      user_id: userId,
+      username: null,
+      is_registered: false,
+    }
+  }
+
+  const username = getStoredUsername()
+
+  return {
+    user_id: userId,
+    username: username || null,
+    is_registered: window.localStorage.getItem(RIDESMART_IS_REGISTERED_KEY) === 'true',
+  }
+}
+
+export async function getCurrentAuthIdentity(userId = getRideSmartUserId()) {
+  const params = new URLSearchParams({
+    user_id: userId,
+  })
+  const identity = await getJson('/api/auth/me', params)
+
+  return saveAuthIdentity(identity)
+}
+
+export async function registerUsername(username) {
+  const identity = await postJson('/api/auth/register', {
+    user_id: getRideSmartUserId(),
+    username,
+  })
+
+  return saveAuthIdentity(identity)
+}
+
+export async function loginWithUsername(username) {
+  const identity = await postJson('/api/auth/login', {
+    username,
+  })
+
+  return saveAuthIdentity(identity)
 }
 
 export function createReport({ latitude, longitude, issueType = 'gap', description = '' }) {

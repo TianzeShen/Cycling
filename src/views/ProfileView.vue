@@ -4,14 +4,24 @@ import { RouterLink } from 'vue-router'
 import {
   deleteReport,
   getAllReports,
+  getCurrentAuthIdentity,
   getMyReports,
   getReportLikes,
   getRideSmartUserId,
+  getStoredAuthIdentity,
+  loginWithUsername,
+  registerUsername,
   setReportLikes,
   updateReport,
 } from '../services/api'
 
-const userId = getRideSmartUserId()
+const authIdentity = ref(getStoredAuthIdentity())
+const registerUsernameInput = ref('')
+const loginUsernameInput = ref('')
+const authMessage = ref('')
+const authErrorMessage = ref('')
+const authMode = ref('register')
+const isAuthLoading = ref(false)
 const reports = ref([])
 const isLoading = ref(false)
 const errorMessage = ref('')
@@ -21,6 +31,10 @@ const editingDescription = ref('')
 const savingReportId = ref('')
 const deletingReportId = ref('')
 let profileReportsRefreshTimer = null
+
+const userId = computed(() => authIdentity.value.user_id || getRideSmartUserId())
+const displayUsername = computed(() => authIdentity.value.username || '')
+const isRegistered = computed(() => Boolean(authIdentity.value.is_registered))
 
 const badgeCatalog = [
   {
@@ -225,6 +239,78 @@ function formatCoordinate(value) {
   return Number.isFinite(number) ? number.toFixed(6) : 'N/A'
 }
 
+function applyAuthIdentity(identity) {
+  authIdentity.value = {
+    user_id: identity?.user_id || getRideSmartUserId(),
+    username: identity?.username || null,
+    is_registered: Boolean(identity?.is_registered),
+  }
+  registerUsernameInput.value = displayUsername.value
+}
+
+async function loadAuthIdentity({ silent = false } = {}) {
+  if (!silent) {
+    authErrorMessage.value = ''
+  }
+
+  try {
+    applyAuthIdentity(await getCurrentAuthIdentity())
+  } catch (error) {
+    if (!silent) {
+      authErrorMessage.value = 'Unable to check sync status right now.'
+    }
+  }
+}
+
+async function saveUsername() {
+  const username = registerUsernameInput.value.trim()
+
+  authMessage.value = ''
+  authErrorMessage.value = ''
+
+  if (!username) {
+    authErrorMessage.value = 'Enter a username to enable simple recovery.'
+    return
+  }
+
+  isAuthLoading.value = true
+
+  try {
+    applyAuthIdentity(await registerUsername(username))
+    authMessage.value = 'Simple recovery is now linked to this browser data.'
+  } catch (error) {
+    authErrorMessage.value =
+      error?.status === 409 ? 'That username is already taken. Try another one.' : 'Unable to save this username right now.'
+  } finally {
+    isAuthLoading.value = false
+  }
+}
+
+async function restoreUsername() {
+  const username = loginUsernameInput.value.trim()
+
+  authMessage.value = ''
+  authErrorMessage.value = ''
+
+  if (!username) {
+    authErrorMessage.value = 'Enter the username you want to restore.'
+    return
+  }
+
+  isAuthLoading.value = true
+
+  try {
+    applyAuthIdentity(await loginWithUsername(username))
+    loginUsernameInput.value = ''
+    authMessage.value = 'Recovered this username. Your reports and rewards will now use the restored ID.'
+    await loadProfileReports()
+  } catch (error) {
+    authErrorMessage.value = 'Unable to restore that username right now.'
+  } finally {
+    isAuthLoading.value = false
+  }
+}
+
 async function loadProfileReports({ silent = false } = {}) {
   if (!silent) {
     isLoading.value = true
@@ -340,6 +426,7 @@ async function removeReport(report) {
 }
 
 onMounted(() => {
+  loadAuthIdentity({ silent: true })
   loadProfileReports()
   startProfileReportsPolling()
 })
@@ -359,7 +446,11 @@ onBeforeUnmount(() => {
           {{ submittedReports }} reports submitted - {{ validatedReports }} validations received -
           {{ routesImproved }} routes improved
         </p>
-        <p class="profile-user-id">Local user ID: {{ userId }}</p>
+        <p class="profile-user-id">
+          {{ isRegistered ? `Simple recovery username: ${displayUsername}` : 'Guest mode: not linked to a username' }}
+          <br />
+          Local user ID: {{ userId }}
+        </p>
       </div>
 
       <div class="profile-hero-actions">
@@ -377,6 +468,71 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="profile-content-grid">
+      <article class="profile-panel profile-account-panel">
+        <div class="profile-panel-header">
+          <div>
+            <span class="panel-kicker">Simple recovery</span>
+            <h2>{{ isRegistered ? 'Username linked' : 'Sync this guest data' }}</h2>
+          </div>
+          <span class="profile-pill">{{ isRegistered ? 'Linked' : 'Guest' }}</span>
+        </div>
+
+        <p class="profile-account-note">
+          This is simple username recovery without a password. Anyone who knows the username can restore the same
+          RydeSmrt data.
+        </p>
+
+        <div class="profile-auth-tabs" role="tablist" aria-label="Account recovery options">
+          <button
+            type="button"
+            :class="{ active: authMode === 'register' }"
+            @click="authMode = 'register'"
+          >
+            Save my data
+          </button>
+          <button type="button" :class="{ active: authMode === 'login' }" @click="authMode = 'login'">
+            Use existing username
+          </button>
+        </div>
+
+        <form v-if="authMode === 'register'" class="profile-auth-form" @submit.prevent="saveUsername">
+          <label for="profile-register-username">Username for this local data</label>
+          <div class="profile-auth-row">
+            <input
+              id="profile-register-username"
+              v-model="registerUsernameInput"
+              autocomplete="username"
+              maxlength="50"
+              placeholder="e.g. Alice"
+              type="text"
+            />
+            <button type="submit" class="profile-small-button primary" :disabled="isAuthLoading">
+              {{ isAuthLoading ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </form>
+
+        <form v-else class="profile-auth-form" @submit.prevent="restoreUsername">
+          <label for="profile-login-username">Existing username</label>
+          <div class="profile-auth-row">
+            <input
+              id="profile-login-username"
+              v-model="loginUsernameInput"
+              autocomplete="username"
+              maxlength="50"
+              placeholder="e.g. Alice"
+              type="text"
+            />
+            <button type="submit" class="profile-small-button primary" :disabled="isAuthLoading">
+              {{ isAuthLoading ? 'Restoring...' : 'Restore' }}
+            </button>
+          </div>
+        </form>
+
+        <p v-if="authMessage" class="success-text">{{ authMessage }}</p>
+        <p v-if="authErrorMessage" class="status-text">{{ authErrorMessage }}</p>
+      </article>
+
       <article class="profile-panel profile-progress-panel">
         <div class="profile-panel-header">
           <div>
