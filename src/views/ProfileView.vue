@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import {
   deleteReport,
   getAllReports,
@@ -22,6 +22,7 @@ const authMessage = ref('')
 const authErrorMessage = ref('')
 const authMode = ref('register')
 const isAuthLoading = ref(false)
+const route = useRoute()
 const reports = ref([])
 const isLoading = ref(false)
 const errorMessage = ref('')
@@ -363,6 +364,17 @@ function startProfileReportsPolling() {
   }, 5000)
 }
 
+function scrollToSimpleRecovery() {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  document.getElementById('simple-recovery')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+}
+
 function startEditReport(report) {
   editingReportId.value = report.report_id
   editingDescription.value = report.description || ''
@@ -429,7 +441,20 @@ onMounted(() => {
   loadAuthIdentity({ silent: true })
   loadProfileReports()
   startProfileReportsPolling()
+
+  if (route.hash === '#simple-recovery') {
+    nextTick(scrollToSimpleRecovery)
+  }
 })
+
+watch(
+  () => route.hash,
+  (hash) => {
+    if (hash === '#simple-recovery') {
+      nextTick(scrollToSimpleRecovery)
+    }
+  },
+)
 
 onBeforeUnmount(() => {
   window.clearInterval(profileReportsRefreshTimer)
@@ -468,7 +493,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="profile-content-grid">
-      <article class="profile-panel profile-account-panel">
+      <article id="simple-recovery" class="profile-panel profile-account-panel">
         <div class="profile-panel-header">
           <div>
             <span class="panel-kicker">Simple recovery</span>
@@ -506,7 +531,7 @@ onBeforeUnmount(() => {
               placeholder="e.g. Alice"
               type="text"
             />
-            <button type="submit" class="profile-small-button primary" :disabled="isAuthLoading">
+            <button type="submit" class="profile-small-button profile-auth-submit primary" :disabled="isAuthLoading">
               {{ isAuthLoading ? 'Saving...' : 'Save' }}
             </button>
           </div>
@@ -523,7 +548,7 @@ onBeforeUnmount(() => {
               placeholder="e.g. Alice"
               type="text"
             />
-            <button type="submit" class="profile-small-button primary" :disabled="isAuthLoading">
+            <button type="submit" class="profile-small-button profile-auth-submit primary" :disabled="isAuthLoading">
               {{ isAuthLoading ? 'Restoring...' : 'Restore' }}
             </button>
           </div>

@@ -1,6 +1,7 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { getCurrentAuthIdentity, getStoredAuthIdentity } from './services/api'
 
 const navItems = [
   { label: 'Home', to: '/' },
@@ -12,7 +13,9 @@ const navItems = [
 const route = useRoute()
 const isHelpOpen = ref(false)
 const activeHelpStep = ref(0)
+const authIdentity = ref(getStoredAuthIdentity())
 const HELP_SEEN_STORAGE_KEY_PREFIX = 'ridesmart-help-shown'
+const RIDESMART_AUTH_UPDATED_EVENT = 'ridesmart-auth-updated'
 
 const helpContentByRoute = {
   home: {
@@ -110,6 +113,17 @@ const activeHelpSteps = computed(() => activeHelpContent.value.steps)
 const currentHelpStep = computed(() => activeHelpSteps.value[activeHelpStep.value] || activeHelpSteps.value[0])
 const isFirstHelpStep = computed(() => activeHelpStep.value === 0)
 const isLastHelpStep = computed(() => activeHelpStep.value === activeHelpSteps.value.length - 1)
+const navIdentityLabel = computed(() =>
+  authIdentity.value.is_registered && authIdentity.value.username ? authIdentity.value.username : 'Guest',
+)
+
+function refreshStoredAuthIdentity() {
+  authIdentity.value = getStoredAuthIdentity()
+}
+
+function handleAuthUpdated(event) {
+  authIdentity.value = event.detail || getStoredAuthIdentity()
+}
 
 function openHelpPanel() {
   activeHelpStep.value = 0
@@ -164,6 +178,19 @@ watch(
   },
   { immediate: true },
 )
+
+onMounted(() => {
+  window.addEventListener(RIDESMART_AUTH_UPDATED_EVENT, handleAuthUpdated)
+  getCurrentAuthIdentity()
+    .then((identity) => {
+      authIdentity.value = identity
+    })
+    .catch(refreshStoredAuthIdentity)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(RIDESMART_AUTH_UPDATED_EVENT, handleAuthUpdated)
+})
 </script>
 
 <template>
@@ -171,10 +198,20 @@ watch(
     <header class="glass-header">
       <nav class="header-nav" aria-label="Primary navigation">
         <RouterLink class="brand-logo" to="/">Ryde<span>Smrt</span></RouterLink>
-        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to">
-          {{ item.label }}
+        <div class="header-nav-main">
+          <RouterLink v-for="item in navItems" :key="item.to" :to="item.to">
+            {{ item.label }}
+          </RouterLink>
+          <button type="button" class="help-trigger" @click="openHelpPanel">Help</button>
+        </div>
+        <RouterLink
+          class="nav-user-status"
+          :class="{ registered: authIdentity.is_registered }"
+          :to="{ path: '/profile', hash: '#simple-recovery' }"
+          :title="authIdentity.is_registered ? `Signed in as ${navIdentityLabel}` : 'Guest mode'"
+        >
+          {{ navIdentityLabel }}
         </RouterLink>
-        <button type="button" class="help-trigger" @click="openHelpPanel">Help</button>
       </nav>
     </header>
 

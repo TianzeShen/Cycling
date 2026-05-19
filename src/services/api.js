@@ -3,6 +3,7 @@ const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const RIDESMART_USER_ID_KEY = 'ridesmart_user_id'
 const RIDESMART_USERNAME_KEY = 'ridesmart_username'
 const RIDESMART_IS_REGISTERED_KEY = 'ridesmart_is_registered'
+const RIDESMART_AUTH_UPDATED_EVENT = 'ridesmart-auth-updated'
 const RIDESMART_REPORT_LIKES_KEY = 'ridesmart_report_likes'
 const RIDESMART_REPORT_LIKE_SESSIONS_KEY = 'ridesmart_report_like_sessions'
 
@@ -320,6 +321,7 @@ function saveAuthIdentity(identity) {
   }
 
   window.localStorage.setItem(RIDESMART_IS_REGISTERED_KEY, identity.is_registered ? 'true' : 'false')
+  window.dispatchEvent(new CustomEvent(RIDESMART_AUTH_UPDATED_EVENT, { detail: identity }))
 
   return identity
 }
