@@ -782,12 +782,18 @@ function syncActiveReportPopupFromReports() {
 
   const backendLikes = getReportBackendLikeCount(report)
   const likes = Math.max(backendLikes, getReportLikes(activeReportPopup.value.reportId) ?? 0)
+  const session = getReportLikeSession(activeReportPopup.value.reportId)
+  const isLikeWindowActive = Boolean(
+    session && !session.submitted && session.endsAt && session.endsAt > Date.now(),
+  )
 
   setReportLikes(activeReportPopup.value.reportId, likes)
   activeReportPopup.value = {
     ...activeReportPopup.value,
     backendLikes,
-    likedByCurrentUser: getReportLikedByCurrentUser(report) || activeReportPopup.value.likedByCurrentUser,
+    likedByCurrentUser: isLikeWindowActive
+      ? false
+      : getReportLikedByCurrentUser(report) || activeReportPopup.value.likedByCurrentUser,
     likes,
   }
 }
@@ -834,11 +840,9 @@ async function submitReportLikeSession(reportId) {
 
   const session = getReportLikeSession(reportId)
   const pendingLikes = session?.pendingLikes ? Number(session.pendingLikes) : 0
-  const submittedLikesInSession = session?.submittedLikes ? Number(session.submittedLikes) : 0
-  const unsentLikes = Math.max(pendingLikes - submittedLikesInSession, 0)
   const alreadySubmitted = Boolean(session?.submitted)
 
-  if (alreadySubmitted) {
+  if (alreadySubmitted || pendingLikes <= 0) {
     return
   }
 
@@ -847,14 +851,10 @@ async function submitReportLikeSession(reportId) {
   const baseLikes = Number(session?.baseLikes ?? currentBackendLikes)
   const optimisticLikes = Math.max(currentVisibleLikes, baseLikes + pendingLikes)
   let response = null
-  let submittedLikes = 0
   try {
-    for (let index = 0; index < Math.min(unsentLikes, 100); index += 1) {
-      response = await likeReport(reportId)
-      submittedLikes += 1
-    }
+    response = await likeReport(reportId, pendingLikes)
   } catch (error) {
-    if (error?.status === 409 || submittedLikes > 0) {
+    if (error?.status === 409) {
       saveReportLikeSession(reportId, {
         ...session,
         pendingLikes: 0,
@@ -869,35 +869,29 @@ async function submitReportLikeSession(reportId) {
           likeProgress: 0,
         }
       }
-      if (!submittedLikes) {
-        emit('report-like-updated', {
-          reportId,
-          likeCount: activeReportPopup.value?.backendLikes ?? activeReportPopup.value?.likes ?? 0,
-          likedByCurrentUser: true,
-        })
-        return
-      }
-    } else {
-      return
+      emit('report-like-updated', {
+        reportId,
+        likeCount: activeReportPopup.value?.backendLikes ?? activeReportPopup.value?.likes ?? 0,
+        likedByCurrentUser: true,
+      })
     }
+    return
   }
 
   const returnedLikes = Number(response?.like_count ?? response?.likes ?? response?.likeCount)
   const finalLikes = Math.max(
     optimisticLikes,
-    currentBackendLikes + submittedLikes,
     Number.isFinite(returnedLikes) && returnedLikes >= 0 ? returnedLikes : 0,
   )
   const likedByCurrentUser = toBooleanFlag(
     response?.liked_by_current_user ??
       response?.likedByCurrentUser ??
-      submittedLikesInSession + submittedLikes > 0,
+      pendingLikes > 0,
   )
 
   saveReportLikeSession(reportId, {
     ...session,
     pendingLikes: 0,
-    submittedLikes: submittedLikesInSession + submittedLikes,
     submitted: true,
   })
 
@@ -932,7 +926,6 @@ async function likeActiveReport() {
   const startedAt = existingLikeSession?.startedAt || Date.now()
   const likeWindowEndsAt = existingLikeSession?.endsAt || Date.now() + REPORT_LIKE_WINDOW_MS
   const currentPendingLikes = Number(existingLikeSession?.pendingLikes ?? activeReportPopup.value.pendingLikes ?? 0)
-  const currentSubmittedLikes = Number(existingLikeSession?.submittedLikes ?? 0)
   const baseLikes = Number(
     existingLikeSession?.baseLikes ??
       activeReportPopup.value.backendLikes ??
@@ -947,7 +940,6 @@ async function likeActiveReport() {
     endsAt: likeWindowEndsAt,
     baseLikes,
     pendingLikes,
-    submittedLikes: currentSubmittedLikes,
     submitted: false,
   })
 
@@ -977,37 +969,6 @@ async function likeActiveReport() {
   window.setTimeout(() => {
     reportLikeBursts.value = reportLikeBursts.value.filter((id) => id !== burstId)
   }, 700)
-
-  try {
-    const response = await likeReport(reportId)
-    const returnedLikes = Number(response?.like_count ?? response?.likes ?? response?.likeCount)
-    const finalLikes = Math.max(
-      likes,
-      Number.isFinite(returnedLikes) && returnedLikes >= 0 ? returnedLikes : 0,
-    )
-    const latestSession = getReportLikeSession(reportId) || {}
-    saveReportLikeSession(reportId, {
-      ...latestSession,
-      submittedLikes: Number(latestSession.submittedLikes || 0) + 1,
-    })
-    setReportLikes(reportId, finalLikes)
-
-    if (activeReportPopup.value?.reportId === reportId) {
-      activeReportPopup.value = {
-        ...activeReportPopup.value,
-        backendLikes: finalLikes,
-        likes: finalLikes,
-      }
-    }
-
-    emit('report-like-updated', {
-      reportId,
-      likeCount: finalLikes,
-      likedByCurrentUser: toBooleanFlag(response?.liked_by_current_user ?? response?.likedByCurrentUser),
-    })
-  } catch (error) {
-    // Keep the optimistic count visible. The end-of-window submit will retry any unsent likes.
-  }
 }
 
 function emitHeatmapRegionHover(feature) {

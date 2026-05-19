@@ -393,9 +393,12 @@ export function getAllReports() {
   return getJson('/api/reports/all', params)
 }
 
-export function likeReport(reportId) {
+export function likeReport(reportId, likeCount = 1) {
+  const safeLikeCount = Math.min(Math.max(Number(likeCount) || 1, 1), 100)
+
   return postJson(`/api/reports/${encodeURIComponent(reportId)}/like`, {
     user_id: getRideSmartUserId(),
+    like_count: safeLikeCount,
   })
 }
 
