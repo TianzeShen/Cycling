@@ -725,17 +725,69 @@ function queueAddressSearch(field, query) {
   }, 300)
 }
 
+function formatSuggestionInputValue(suggestion) {
+  const label = String(suggestion?.label || '').trim()
+  const address = String(suggestion?.address || '').trim()
+
+  if (!address) {
+    return label
+  }
+
+  if (!label) {
+    return address
+  }
+
+  return address.toLowerCase().includes(label.toLowerCase()) ? address : `${label}, ${address}`
+}
+
+function coordinateKey(coordinate) {
+  return Array.isArray(coordinate) ? coordinate.map((value) => Number(value).toFixed(6)).join(',') : ''
+}
+
+async function hydrateSelectedAddress(field, suggestion, fallbackValue) {
+  const coordinate = suggestion?.coordinate
+
+  if (!Array.isArray(coordinate)) {
+    return
+  }
+
+  try {
+    const selectedCoordinateKey = coordinateKey(coordinate)
+    const place = await reverseMapboxPlace(coordinate)
+    const nextValue = formatSuggestionInputValue({
+      label: suggestion?.label || place?.label,
+      address: place?.address || suggestion?.address,
+    })
+
+    if (!nextValue || nextValue === fallbackValue) {
+      return
+    }
+
+    if (field === 'start' && coordinateKey(startCoordinate.value) === selectedCoordinateKey) {
+      start.value = nextValue
+    } else if (field === 'destination' && coordinateKey(endCoordinate.value) === selectedCoordinateKey) {
+      destination.value = nextValue
+    }
+  } catch (error) {
+    // Keep the selected suggestion label if reverse geocoding is unavailable.
+  }
+}
+
 function selectSuggestion(field, suggestion) {
+  const inputValue = formatSuggestionInputValue(suggestion)
+
   if (field === 'start') {
-    start.value = suggestion.label
+    start.value = inputValue
     startCoordinate.value = suggestion.coordinate
     hasStartCoordinate.value = true
     startSuggestions.value = []
+    hydrateSelectedAddress(field, suggestion, inputValue)
   } else {
-    destination.value = suggestion.label
+    destination.value = inputValue
     endCoordinate.value = suggestion.coordinate
     hasDestinationCoordinate.value = true
     destinationSuggestions.value = []
+    hydrateSelectedAddress(field, suggestion, inputValue)
   }
 
   activeSearchField.value = null
