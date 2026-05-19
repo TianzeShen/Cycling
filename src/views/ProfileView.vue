@@ -54,7 +54,7 @@ const badgeCatalog = [
     progress: (stats) => Math.min(stats.submittedReports / 5, 1),
   },
   {
-    id: 'Safety Builder',
+    id: 'safety-builder',
     name: 'Safety Builder',
     detail: 'Have at least one report validated by the community.',
     thresholdLabel: '1 validation',
@@ -582,16 +582,51 @@ onBeforeUnmount(() => {
             v-for="badge in earnedBadges"
             :key="badge.id"
             class="profile-badge-card"
-            :class="{ locked: !badge.earned }"
+            :class="[`badge-${badge.id}`, { locked: !badge.earned, unlocked: badge.earned }]"
           >
-            <span class="profile-badge-icon">{{ badge.name.charAt(0) }}</span>
-            <div>
-              <h3>{{ badge.name }}</h3>
-              <p>{{ badge.detail }}</p>
-              <div class="badge-progress-track">
-                <span :style="{ width: `${badge.progressPercent}%` }"></span>
+            <div class="profile-badge-flip">
+              <div class="profile-badge-face profile-badge-front">
+                <span class="profile-badge-lock-state">{{ badge.earned ? 'Unlocked' : 'Locked' }}</span>
+                <h3>{{ badge.name }}</h3>
+                <p>{{ badge.detail }}</p>
+                <div class="badge-progress-track">
+                  <span :style="{ width: `${badge.progressPercent}%` }"></span>
+                </div>
+                <small>{{ badge.earned ? 'Condition complete' : `${badge.progressPercent}% complete` }}</small>
               </div>
-              <small>{{ badge.earned ? 'Earned' : `${badge.progressPercent}% complete` }}</small>
+
+              <div class="profile-badge-face profile-badge-back">
+                <div class="profile-badge-icon" aria-hidden="true">
+                  <svg v-if="badge.id === 'first-report'" viewBox="0 0 64 64" role="img">
+                    <path class="badge-shield" d="M32 4 53 13v15c0 15.2-8.3 25.9-21 32C19.3 53.9 11 43.2 11 28V13L32 4Z" />
+                    <path class="badge-route" d="M21 45c4.8-8.8 16.8-8.2 21-16" />
+                    <circle class="badge-dot" cx="21" cy="45" r="3.6" />
+                    <path class="badge-flag-pole" d="M30 17v24" />
+                    <path class="badge-flag" d="M30 17h14l-3.2 5.4L44 28H30V17Z" />
+                  </svg>
+                  <svg v-else-if="badge.id === 'gap-spotter'" viewBox="0 0 64 64" role="img">
+                    <path class="badge-shield" d="M32 4 53 13v15c0 15.2-8.3 25.9-21 32C19.3 53.9 11 43.2 11 28V13L32 4Z" />
+                    <circle class="badge-lens" cx="28" cy="27" r="13" />
+                    <path class="badge-handle" d="m38 37 10 10" />
+                    <path class="badge-gap-left" d="M18 28h8" />
+                    <path class="badge-gap-right" d="M31 28h9" />
+                    <path class="badge-spark" d="M29 18v5m0 10v4" />
+                  </svg>
+                  <svg v-else-if="badge.id === 'safety-builder'" viewBox="0 0 64 64" role="img">
+                    <path class="badge-shield" d="M32 4 53 13v15c0 15.2-8.3 25.9-21 32C19.3 53.9 11 43.2 11 28V13L32 4Z" />
+                    <path class="badge-wall" d="M18 39h28M20 31h24M24 23h16" />
+                    <path class="badge-check" d="m23 31 6 6 13-15" />
+                  </svg>
+                  <svg v-else viewBox="0 0 64 64" role="img">
+                    <path class="badge-shield" d="M32 4 53 13v15c0 15.2-8.3 25.9-21 32C19.3 53.9 11 43.2 11 28V13L32 4Z" />
+                    <circle class="badge-compass" cx="32" cy="31" r="15" />
+                    <path class="badge-needle" d="m38 19-4 17-13 8 4-17 13-8Z" />
+                    <path class="badge-route" d="M18 48c7-4 12 2 19-2 4-2.2 5-6.2 9-7" />
+                  </svg>
+                </div>
+                <h3>{{ badge.name }}</h3>
+                <small>Earned</small>
+              </div>
             </div>
           </article>
         </div>
