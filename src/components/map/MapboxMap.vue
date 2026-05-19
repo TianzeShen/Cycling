@@ -7,7 +7,6 @@ import {
   getReportLikeSession,
   getReportLikes,
   getRideSmartUserId,
-  incrementReportLikes,
   likeReport,
   saveReportLikeSession,
   setReportLikes,
@@ -366,8 +365,29 @@ function addGapMarkerImage() {
 function getReportCollection() {
   return {
     type: 'FeatureCollection',
-    features: props.reports.map(reportToFeature),
+    features: props.reports.map(reportToFeature).filter(Boolean),
   }
+}
+
+function isCoordinateInMelbourneBounds(location) {
+  if (!Array.isArray(location) || location.length < 2) {
+    return false
+  }
+
+  const [lat, lng] = location
+
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lng >= MELBOURNE_BOUNDS[0][0] &&
+    lng <= MELBOURNE_BOUNDS[1][0] &&
+    lat >= MELBOURNE_BOUNDS[0][1] &&
+    lat <= MELBOURNE_BOUNDS[1][1]
+  )
+}
+
+function toBooleanFlag(value) {
+  return value === true || value === 'true' || value === 1 || value === '1'
 }
 
 function reportToFeature(report, index) {
@@ -376,11 +396,14 @@ function reportToFeature(report, index) {
   const location = Number.isFinite(latitude) && Number.isFinite(longitude)
     ? [latitude, longitude]
     : report.location || [-37.805 + index * 0.007, 144.955 + index * 0.009]
+
+  if (!isCoordinateInMelbourneBounds(location)) {
+    return null
+  }
+
   const votes = Number(report.validation_count ?? report.votes ?? 1)
   const likes = Number(report.like_count ?? report.likes ?? report.likeCount ?? 0)
-  const likedByCurrentUser = Boolean(
-    report.liked_by_current_user ?? report.likedByCurrentUser ?? false,
-  )
+  const likedByCurrentUser = toBooleanFlag(report.liked_by_current_user ?? report.likedByCurrentUser)
 
   return pointToFeature(location, {
     id: report.report_id || report.id,
@@ -480,16 +503,6 @@ function boundsIntersect(a, b) {
   return a.west <= b.east && a.east >= b.west && a.south <= b.north && a.north >= b.south
 }
 
-function pointInBounds(feature, bounds) {
-  const coordinates = feature.geometry?.coordinates
-
-  return Array.isArray(coordinates) &&
-    coordinates[0] >= bounds.west &&
-    coordinates[0] <= bounds.east &&
-    coordinates[1] >= bounds.south &&
-    coordinates[1] <= bounds.north
-}
-
 function getSa2HeatmapCollection() {
   const visibleBounds = getPaddedMapBounds()
 
@@ -507,14 +520,7 @@ function getSa2HeatmapCollection() {
 }
 
 function getVisibleReportCollection() {
-  const visibleBounds = getPaddedMapBounds()
-
-  return {
-    type: 'FeatureCollection',
-    features: props.reports
-      .map(reportToFeature)
-      .filter((feature) => !visibleBounds || pointInBounds(feature, visibleBounds)),
-  }
+  return getReportCollection()
 }
 
 function setSourceData(id, data) {
@@ -703,7 +709,8 @@ function showReportPopup(event) {
   const statusClass = ['validated', 'resolved', 'submitted'].includes(statusKey)
     ? statusKey
     : 'submitted'
-  const showStatusPill = statusKey !== 'submitted' || isOwnReport
+  const showStatusPill =
+    statusKey === 'submitted' ? isOwnReport : ['validated', 'resolved'].includes(statusKey)
   const status = statusKey === 'submitted' ? 'Submitted' : properties.status
   const point = map.value.project(coordinates)
   const reportId = properties.id
@@ -714,13 +721,11 @@ function showReportPopup(event) {
   const backendLikes = Number(
     properties.likes ?? properties.like_count ?? properties.likeCount ?? properties.likes_count ?? 0,
   )
-  const likedByCurrentUser = Boolean(
-    properties.liked_by_current_user ?? properties.likedByCurrentUser ?? false,
-  )
+  const likedByCurrentUser = toBooleanFlag(properties.liked_by_current_user ?? properties.likedByCurrentUser)
   const submittedSession = Boolean(existingLikeSession?.submitted)
   const pendingLikes = submittedSession ? 0 : Number(existingLikeSession?.pendingLikes || 0)
   const latestLikes = getReportLikes(reportId)
-  const likes = latestLikes !== null ? latestLikes : backendLikes
+  const likes = Math.max(backendLikes, latestLikes ?? 0)
 
   activeReportPopup.value = {
     coordinates,
@@ -749,6 +754,42 @@ function showReportPopup(event) {
     submitReportLikeSession(reportId)
   }
 
+}
+
+function getReportIdentifier(report) {
+  return report?.report_id || report?.id || null
+}
+
+function getReportBackendLikeCount(report) {
+  const likes = Number(report?.like_count ?? report?.likes ?? report?.likeCount ?? 0)
+  return Number.isFinite(likes) ? likes : 0
+}
+
+function getReportLikedByCurrentUser(report) {
+  return toBooleanFlag(report?.liked_by_current_user ?? report?.likedByCurrentUser)
+}
+
+function syncActiveReportPopupFromReports() {
+  if (!activeReportPopup.value?.reportId) {
+    return
+  }
+
+  const report = props.reports.find((item) => getReportIdentifier(item) === activeReportPopup.value.reportId)
+
+  if (!report) {
+    return
+  }
+
+  const backendLikes = getReportBackendLikeCount(report)
+  const likes = Math.max(backendLikes, getReportLikes(activeReportPopup.value.reportId) ?? 0)
+
+  setReportLikes(activeReportPopup.value.reportId, likes)
+  activeReportPopup.value = {
+    ...activeReportPopup.value,
+    backendLikes,
+    likedByCurrentUser: getReportLikedByCurrentUser(report) || activeReportPopup.value.likedByCurrentUser,
+    likes,
+  }
 }
 
 function updateActiveReportPopupPosition() {
@@ -799,11 +840,15 @@ async function submitReportLikeSession(reportId) {
     return
   }
 
-  let response
+  let response = null
+  let submittedLikes = 0
   try {
-    response = await likeReport(reportId, Math.min(Math.max(pendingLikes, 1), 100))
+    for (let index = 0; index < Math.min(Math.max(pendingLikes, 1), 100); index += 1) {
+      response = await likeReport(reportId)
+      submittedLikes += 1
+    }
   } catch (error) {
-    if (error?.status === 409) {
+    if (error?.status === 409 || submittedLikes > 0) {
       saveReportLikeSession(reportId, {
         ...session,
         pendingLikes: 0,
@@ -818,20 +863,27 @@ async function submitReportLikeSession(reportId) {
           likeProgress: 0,
         }
       }
-      emit('report-like-updated', {
-        reportId,
-        likeCount: activeReportPopup.value?.backendLikes ?? activeReportPopup.value?.likes ?? 0,
-        likedByCurrentUser: true,
-      })
+      if (!submittedLikes) {
+        emit('report-like-updated', {
+          reportId,
+          likeCount: activeReportPopup.value?.backendLikes ?? activeReportPopup.value?.likes ?? 0,
+          likedByCurrentUser: true,
+        })
+        return
+      }
+    } else {
+      return
     }
-    return
   }
 
   const returnedLikes = Number(
-    response.like_count ?? response.likes ?? response.likeCount ?? 0,
+    response?.like_count ??
+      response?.likes ??
+      response?.likeCount ??
+      ((activeReportPopup.value?.backendLikes ?? 0) + submittedLikes),
   )
-  const likedByCurrentUser = Boolean(
-    response.liked_by_current_user ?? response.likedByCurrentUser ?? false,
+  const likedByCurrentUser = toBooleanFlag(
+    response?.liked_by_current_user ?? response?.likedByCurrentUser ?? submittedLikes > 0,
   )
 
   saveReportLikeSession(reportId, {
@@ -1561,7 +1613,10 @@ watch(
 
 watch(
   () => props.reports,
-  updateHeatmapData,
+  () => {
+    updateHeatmapData()
+    syncActiveReportPopupFromReports()
+  },
   { deep: true },
 )
 

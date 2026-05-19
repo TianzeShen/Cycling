@@ -74,6 +74,7 @@ const isMobileAnalysisDragging = ref(false)
 const hasMobileAnalysisDragged = ref(false)
 const shouldIgnoreAnalysisToggleClick = ref(false)
 let analysisHighlightTimer = null
+let publicReportsRefreshTimer = null
 const searchTimers = {
   start: null,
   destination: null,
@@ -1028,13 +1029,64 @@ function handleLocationFound(location) {
   locationStatus.value = 'Using your current location as the start point.'
 }
 
+function requestBrowserLocation(options) {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options)
+  })
+}
+
+function getLocationFailureMessage(error) {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Location requires HTTPS or localhost. Using Melbourne Central as a fallback.'
+  }
+
+  if (error?.code === error?.PERMISSION_DENIED) {
+    return 'Location permission was not granted. Using Melbourne Central as a fallback.'
+  }
+
+  if (error?.code === error?.POSITION_UNAVAILABLE) {
+    return 'Your device could not provide a location. Using Melbourne Central as a fallback.'
+  }
+
+  if (error?.code === error?.TIMEOUT) {
+    return 'Location timed out. Using Melbourne Central as a fallback.'
+  }
+
+  return 'Current location is unavailable. Using Melbourne Central as a fallback.'
+}
+
+async function refineCurrentLocation() {
+  try {
+    const position = await requestBrowserLocation({
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 25000,
+    })
+
+    handleLocationFound({
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+    })
+    resolveCurrentLocationLabel()
+  } catch (error) {
+    // The coarse location is already usable; a high-accuracy refresh is a best-effort upgrade.
+  }
+}
+
 async function loadPublicReports() {
   try {
     const response = await getAllReports()
     publicReports.value = Array.isArray(response.reports) ? response.reports : []
   } catch (error) {
-    publicReports.value = []
+    if (!publicReports.value.length) {
+      publicReports.value = []
+    }
   }
+}
+
+function startPublicReportsPolling() {
+  window.clearInterval(publicReportsRefreshTimer)
+  publicReportsRefreshTimer = window.setInterval(loadPublicReports, 5000)
 }
 
 function handleReportLocation(location) {
@@ -1059,6 +1111,7 @@ function handleReportLikeUpdated({ reportId, likeCount, likedByCurrentUser }) {
     }
     return report
   })
+  loadPublicReports()
 }
 
 async function useCurrentLocationAsStart() {
@@ -1072,32 +1125,46 @@ async function useCurrentLocationAsStart() {
   locationStatus.value = 'Using your current location as the start point.'
 }
 
-function locateUserOnLoad() {
+async function locateUserOnLoad() {
   if (!navigator.geolocation) {
     locationStatus.value = 'Browser location is unavailable. Using Melbourne Central as a fallback.'
     isInitialLocationResolved.value = true
     return
   }
 
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
+  try {
+    const position = await requestBrowserLocation({
+      enableHighAccuracy: false,
+      maximumAge: 120000,
+      timeout: 20000,
+    })
+
+    handleLocationFound({
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+    })
+    resolveCurrentLocationLabel()
+    isInitialLocationResolved.value = true
+    refineCurrentLocation()
+  } catch (error) {
+    try {
+      const position = await requestBrowserLocation({
+        enableHighAccuracy: true,
+        maximumAge: 60000,
+        timeout: 25000,
+      })
+
       handleLocationFound({
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       })
       resolveCurrentLocationLabel()
+    } catch (fallbackError) {
+      locationStatus.value = getLocationFailureMessage(fallbackError || error)
+    } finally {
       isInitialLocationResolved.value = true
-    },
-    () => {
-      locationStatus.value = 'Location permission was not granted. Using Melbourne Central as a fallback.'
-      isInitialLocationResolved.value = true
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 60000,
-      timeout: 10000,
-    },
-  )
+    }
+  }
 }
 
 watch(
@@ -1134,11 +1201,13 @@ onMounted(() => {
   }
 
   loadPublicReports()
+  startPublicReportsPolling()
   document.addEventListener('pointerdown', handleDocumentPointerDown)
 })
 
 onBeforeUnmount(() => {
   window.clearTimeout(analysisHighlightTimer)
+  window.clearInterval(publicReportsRefreshTimer)
   stopTripTracking()
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })

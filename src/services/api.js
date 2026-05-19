@@ -393,10 +393,9 @@ export function getAllReports() {
   return getJson('/api/reports/all', params)
 }
 
-export function likeReport(reportId, likeCount) {
+export function likeReport(reportId) {
   return postJson(`/api/reports/${encodeURIComponent(reportId)}/like`, {
     user_id: getRideSmartUserId(),
-    like_count: likeCount,
   })
 }
 
