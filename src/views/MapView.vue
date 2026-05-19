@@ -1354,10 +1354,15 @@ const isMobileAnalysisRevealing = computed(
 
 function getMobileExpandedAnalysisHeight() {
   if (typeof window === 'undefined') {
-    return 490
+    return 320
   }
 
-  return Math.min(window.innerHeight * 0.56, 490)
+  const viewportHeight = window.visualViewport?.height || window.innerHeight
+  const mapHeight = Math.max(viewportHeight - 70, 320)
+  const reservedForPlannerRoutesAndActions = 330
+  const availableHeight = mapHeight - reservedForPlannerRoutesAndActions
+
+  return Math.max(176, Math.min(mapHeight * 0.46, availableHeight, 490))
 }
 
 const mobileAnalysisStyle = computed(() => ({
@@ -1465,7 +1470,11 @@ const mobileAnalysisStyle = computed(() => ({
       </section>
     </transition>
 
-    <section v-if="selectedRoute && !isHeatmapMode" class="trip-launch-panel glass-panel">
+    <section
+      v-if="selectedRoute && !isHeatmapMode"
+      class="trip-launch-panel glass-panel"
+      :class="`trip-launch-panel-${tripStatus}`"
+    >
       <template v-if="tripStatus === 'idle'">
         <div>
           <span class="panel-kicker">Ready to ride</span>

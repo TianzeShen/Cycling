@@ -16,6 +16,7 @@ const activeHelpStep = ref(0)
 const authIdentity = ref(getStoredAuthIdentity())
 const HELP_SEEN_STORAGE_KEY_PREFIX = 'ridesmart-help-shown'
 const RIDESMART_AUTH_UPDATED_EVENT = 'ridesmart-auth-updated'
+const MAP_ROUTE_BODY_CLASS = 'map-route-active'
 
 const helpContentByRoute = {
   home: {
@@ -125,6 +126,14 @@ function handleAuthUpdated(event) {
   authIdentity.value = event.detail || getStoredAuthIdentity()
 }
 
+function syncMapRouteBodyClass(routeName) {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  document.body.classList.toggle(MAP_ROUTE_BODY_CLASS, routeName === 'map')
+}
+
 function openHelpPanel() {
   activeHelpStep.value = 0
   isHelpOpen.value = true
@@ -175,6 +184,7 @@ watch(
     activeHelpStep.value = 0
     isHelpOpen.value = false
     maybeOpenHelpForRoute(routeName)
+    syncMapRouteBodyClass(routeName)
   },
   { immediate: true },
 )
@@ -190,6 +200,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener(RIDESMART_AUTH_UPDATED_EVENT, handleAuthUpdated)
+  document.body.classList.remove(MAP_ROUTE_BODY_CLASS)
 })
 </script>
 

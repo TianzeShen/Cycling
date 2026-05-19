@@ -543,6 +543,7 @@ label {
 .map-view-wrapper {
   --map-top-control-height: 6.9rem;
   height: calc(100vh - 70px);
+  height: calc(100dvh - 70px);
   margin-top: 70px;
   overflow: hidden;
   position: relative;
@@ -5853,15 +5854,54 @@ code {
 
 /* Mobile map panel stacking fixes */
 @media (max-width: 620px) {
+  body.map-route-active {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body.map-route-active .app-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  body.map-route-active .main-content {
+    flex: none;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .map-view-wrapper {
+    --mobile-edge: 0.75rem;
+    --mobile-bottom-safe: env(safe-area-inset-bottom, 0px);
+    --mobile-controls-height: 2.95rem;
+    --mobile-trip-height: 4.2rem;
+    --mobile-top-strip-space: 6.85rem;
+    height: calc(100vh - 70px);
+    height: calc(100dvh - 70px);
+    min-height: 0;
+    width: 100%;
+  }
+
   .map-side-panel {
     bottom: auto;
     left: 0;
     max-height: none;
-    overflow: visible;
+    overflow-x: visible;
+    overflow-y: visible;
     right: 0;
     top: 0;
     width: auto;
     z-index: 16;
+  }
+
+  .map-side-panel::-webkit-scrollbar {
+    display: none;
   }
 
   .route-top-strip,
@@ -5870,11 +5910,11 @@ code {
     border-radius: 16px;
     flex-direction: column;
     gap: 0.3rem;
-    left: 0.75rem;
+    left: var(--mobile-edge);
     min-width: 0;
     padding: 0.45rem;
-    right: 0.75rem;
-    top: 7.7rem;
+    right: var(--mobile-edge);
+    top: var(--mobile-top-strip-space);
     z-index: 18;
   }
 
@@ -5960,6 +6000,7 @@ code {
     background: rgba(255, 255, 255, 0.92);
     border-radius: 16px;
     box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+    margin: 0 var(--mobile-edge);
     padding: 0.7rem 0.8rem;
   }
 
@@ -6013,13 +6054,13 @@ code {
     background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 22px 22px 0 0;
-    bottom: 3.55rem;
+    bottom: calc(var(--mobile-controls-height) + var(--mobile-bottom-safe) + 0.45rem);
     box-shadow: 0 -18px 42px rgba(15, 23, 42, 0.24);
     gap: 0.35rem;
     left: 0;
     max-height: var(--analysis-drag-height, 2.2rem);
     overflow: hidden;
-    padding: 0.25rem 0.75rem 0.75rem;
+    padding: 0.25rem var(--mobile-edge) 0.75rem;
     position: fixed;
     right: 0;
     transition: max-height 0.28s ease, box-shadow 0.28s ease;
@@ -6027,12 +6068,37 @@ code {
   }
 
   .trip-launch-panel {
-    bottom: 6.1rem;
-    gap: 0.65rem;
+    align-items: stretch;
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    left: var(--mobile-edge);
     min-width: 0;
-    padding: 0.62rem 0.75rem;
-    width: calc(100% - 1.5rem);
+    padding: 0.62rem;
+    right: var(--mobile-edge);
+    transform: none;
+    width: auto;
     z-index: 25;
+  }
+
+  .trip-launch-panel-idle {
+    bottom: auto;
+    top: calc(var(--mobile-top-strip-space) + var(--map-top-control-height) + 0.55rem);
+  }
+
+  .trip-launch-panel-active,
+  .trip-launch-panel-completed {
+    bottom: auto;
+    top: 0.75rem;
+    z-index: 28;
+  }
+
+  .trip-launch-panel-idle > div:first-child {
+    align-content: center;
+    background: rgba(15, 23, 42, 0.04);
+    border-radius: 14px;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
   }
 
   .trip-launch-panel > div:first-child,
@@ -6040,18 +6106,32 @@ code {
     min-width: 0;
   }
 
+  .trip-live-summary {
+    align-content: center;
+    background: rgba(15, 23, 42, 0.04);
+    border-radius: 14px;
+    padding: 0.5rem 0.65rem;
+  }
+
   .trip-launch-panel .panel-kicker {
     font-size: 0.62rem;
   }
 
   .trip-launch-panel strong {
-    font-size: 0.84rem;
+    font-size: 0.82rem;
+    line-height: 1.05;
   }
 
   .trip-launch-panel button {
-    flex: 0 0 auto;
-    font-size: 0.8rem;
-    padding: 0.62rem 0.9rem;
+    align-items: center;
+    border-radius: 14px;
+    display: inline-flex;
+    font-size: 0.74rem;
+    justify-content: center;
+    min-height: 2.4rem;
+    padding: 0.55rem 0.6rem;
+    white-space: normal;
+    width: 100%;
   }
 
   .trip-launch-panel .trip-recalculate-btn {
@@ -6063,13 +6143,26 @@ code {
   }
 
   .trip-maneuver {
+    align-content: center;
+    display: grid;
     min-width: 0;
-    padding: 0.4rem 0.6rem;
+    padding: 0.5rem 0.65rem;
   }
 
   .trip-maneuver span,
   .trip-maneuver strong {
     font-size: 0.68rem;
+  }
+
+  .trip-launch-panel .trip-maneuver + .secondary,
+  .trip-launch-panel .trip-maneuver + .secondary + .secondary,
+  .trip-launch-panel .trip-recalculate-btn {
+    grid-column: auto;
+  }
+
+  .trip-launch-panel > .secondary:nth-last-child(1):nth-child(4),
+  .trip-launch-panel > .secondary:nth-last-child(2):nth-child(4) {
+    grid-column: auto;
   }
 
   .trip-summary-card {
@@ -6079,7 +6172,10 @@ code {
   }
 
   .analysis-stack.analysis-stack-expanded {
-    max-height: var(--analysis-drag-height, min(56vh, 490px));
+    max-height: var(
+      --analysis-drag-height,
+      clamp(9.5rem, calc(100dvh - 70px - var(--mobile-top-strip-space) - 13.5rem), 42dvh)
+    );
     overflow-y: auto;
     padding-bottom: 1rem;
   }
@@ -6209,15 +6305,15 @@ code {
     align-items: center;
     background: rgba(15, 23, 42, 0.88);
     border-radius: 999px;
-    bottom: 0.65rem;
+    bottom: calc(0.65rem + var(--mobile-bottom-safe));
     box-shadow: 0 12px 28px rgba(15, 23, 42, 0.26);
     flex-wrap: nowrap;
     gap: 0.25rem;
     justify-content: center;
-    left: 0.75rem;
+    left: var(--mobile-edge);
     max-width: none;
     padding: 0.35rem;
-    right: 0.75rem;
+    right: var(--mobile-edge);
     top: auto;
     width: auto;
     z-index: 26;
