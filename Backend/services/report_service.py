@@ -35,6 +35,7 @@ LANE_GAP_TYPE_USER_REPORTED = "user_reported_gap"
 DUPLICATE_REPORT_WINDOW_MINUTES = 10
 COORDINATE_DUPLICATE_TOLERANCE_METERS = 3.0
 REPORT_EXPIRY_DAYS = 7
+REPORT_CREATION_REWARD_POINTS = 10
 
 
 class DuplicateReportError(ValueError):
@@ -93,7 +94,8 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
             lat AS latitude,
             lng AS longitude,
             description,
-            reported_at
+            reported_at,
+            0::int AS like_count
     """
 
     insert_lane_gap_query = """
@@ -146,6 +148,11 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
         report_row = (
             connection.execute(text(insert_report_query), params).mappings().first()
         )
+        increment_user_reward_points(
+            connection,
+            payload.user_id,
+            REPORT_CREATION_REWARD_POINTS,
+        )
         if stored_issue_type == "gap":
             connection.execute(text(insert_lane_gap_query), params)
 
@@ -161,18 +168,31 @@ def list_reports_for_user(user_id: str) -> ReportListResponse:
 
     query = """
         SELECT
-            report_id::text AS report_id,
-            user_id::text AS user_id,
-            segment_id::text AS segment_id,
-            issue_type::text AS issue_type,
-            status::text AS status,
-            lat AS latitude,
-            lng AS longitude,
-            description,
-            reported_at
-        FROM ridesmart.issue_report
-        WHERE user_id = CAST(:user_id AS uuid)
-        ORDER BY reported_at DESC
+            ir.report_id::text AS report_id,
+            ir.user_id::text AS user_id,
+            ir.segment_id::text AS segment_id,
+            ir.issue_type::text AS issue_type,
+            ir.status::text AS status,
+            ir.lat AS latitude,
+            ir.lng AS longitude,
+            ir.description,
+            ir.reported_at,
+            COALESCE(SUM(rl.like_count), 0)::int AS like_count
+        FROM ridesmart.issue_report ir
+        LEFT JOIN ridesmart.report_like rl
+          ON rl.report_id = ir.report_id
+        WHERE ir.user_id = CAST(:user_id AS uuid)
+        GROUP BY
+            ir.report_id,
+            ir.user_id,
+            ir.segment_id,
+            ir.issue_type,
+            ir.status,
+            ir.lat,
+            ir.lng,
+            ir.description,
+            ir.reported_at
+        ORDER BY ir.reported_at DESC
     """
     rows = fetch_all(query, {"user_id": user_id})
     return ReportListResponse(reports=[ReportResponse(**row) for row in rows])
@@ -269,7 +289,8 @@ def update_report(report_id: str, payload: ReportUpdateRequest) -> ReportRespons
             lat AS latitude,
             lng AS longitude,
             description,
-            reported_at
+            reported_at,
+            0::int AS like_count
     """
 
     params = {
@@ -398,6 +419,27 @@ def like_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeRespons
                 "like_count": payload.like_count,
             },
         )
+        owner_row = (
+            connection.execute(
+                text(
+                    """
+                    SELECT user_id::text AS user_id
+                    FROM ridesmart.issue_report
+                    WHERE report_id = CAST(:report_id AS uuid)
+                    LIMIT 1
+                    """
+                ),
+                {"report_id": report_id},
+            )
+            .mappings()
+            .first()
+        )
+        if owner_row is not None:
+            increment_user_reward_points(
+                connection,
+                owner_row["user_id"],
+                int(payload.like_count),
+            )
         return fetch_report_like_state(
             connection=connection,
             report_id=report_id,
@@ -583,6 +625,24 @@ def ensure_local_uuid_user_exists(connection, user_id: str) -> None:
             "full_name": f"Local User {user_id[:8]}",
             "email": f"local-{user_id}@ridesmart.local",
             "password_hash": "localstorage-uuid-placeholder",
+        },
+    )
+
+
+def increment_user_reward_points(connection, user_id: str, points: int) -> None:
+    if points == 0:
+        return
+    connection.execute(
+        text(
+            """
+            UPDATE ridesmart.app_user
+            SET reward_points = COALESCE(reward_points, 0) + :points
+            WHERE user_id = CAST(:user_id AS uuid)
+            """
+        ),
+        {
+            "user_id": user_id,
+            "points": int(points),
         },
     )
 

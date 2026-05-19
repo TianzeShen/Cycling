@@ -181,6 +181,7 @@ class ReportResponse(BaseModel):
     longitude: float
     description: str | None = None
     reported_at: datetime
+    like_count: int = 0
 
 
 class ReportListResponse(BaseModel):
@@ -296,3 +297,4 @@ class AuthUserResponse(BaseModel):
     user_id: str
     username: str | None = None
     is_registered: bool
+    reward_points: int = 0
