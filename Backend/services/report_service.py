@@ -34,6 +34,7 @@ REPORT_STATUS_PENDING = "pending"
 LANE_GAP_TYPE_USER_REPORTED = "user_reported_gap"
 DUPLICATE_REPORT_WINDOW_MINUTES = 10
 COORDINATE_DUPLICATE_TOLERANCE_METERS = 3.0
+REPORT_EXPIRY_DAYS = 7
 
 
 class DuplicateReportError(ValueError):
@@ -133,6 +134,7 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
     }
 
     with get_transaction_connection() as connection:
+        cleanup_expired_unliked_reports(connection)
         ensure_local_uuid_user_exists(connection, payload.user_id)
         reject_duplicate_report(
             connection=connection,
@@ -154,6 +156,9 @@ def create_report(payload: ReportCreateRequest) -> ReportResponse:
 
 
 def list_reports_for_user(user_id: str) -> ReportListResponse:
+    with get_transaction_connection() as connection:
+        cleanup_expired_unliked_reports(connection)
+
     query = """
         SELECT
             report_id::text AS report_id,
@@ -174,6 +179,9 @@ def list_reports_for_user(user_id: str) -> ReportListResponse:
 
 
 def list_all_reports(user_id: str) -> PublicReportListResponse:
+    with get_transaction_connection() as connection:
+        cleanup_expired_unliked_reports(connection)
+
     query = """
         SELECT
             ir.report_id::text AS report_id,
@@ -279,6 +287,7 @@ def update_report(report_id: str, payload: ReportUpdateRequest) -> ReportRespons
     }
 
     with get_transaction_connection() as connection:
+        cleanup_expired_unliked_reports(connection)
         reject_duplicate_report(
             connection=connection,
             user_id=payload.user_id,
@@ -317,6 +326,7 @@ def delete_report(report_id: str, user_id: str) -> ReportDeleteResponse:
         raise LookupError("Report not found for this user.")
 
     with get_transaction_connection() as connection:
+        cleanup_expired_unliked_reports(connection)
         delete_lane_gap_for_report(
             connection=connection,
             reported_at=existing_report["reported_at"],
@@ -340,6 +350,7 @@ def delete_report(report_id: str, user_id: str) -> ReportDeleteResponse:
 
 def like_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeResponse:
     with get_transaction_connection() as connection:
+        cleanup_expired_unliked_reports(connection)
         ensure_local_uuid_user_exists(connection, payload.user_id)
         ensure_report_exists(connection, report_id)
         existing_like = connection.execute(
@@ -468,6 +479,76 @@ def reject_duplicate_report(
         raise DuplicateReportError(
             "A similar report from this user was already submitted recently."
         )
+
+
+def cleanup_expired_unliked_reports(connection) -> None:
+    connection.execute(
+        text(
+            """
+            WITH expired_reports AS (
+                SELECT
+                    ir.report_id,
+                    ir.reported_at,
+                    ir.segment_id,
+                    ir.lat,
+                    ir.lng,
+                    ir.issue_type
+                FROM ridesmart.issue_report ir
+                LEFT JOIN ridesmart.report_like rl
+                  ON rl.report_id = ir.report_id
+                GROUP BY
+                    ir.report_id,
+                    ir.reported_at,
+                    ir.segment_id,
+                    ir.lat,
+                    ir.lng,
+                    ir.issue_type
+                HAVING
+                    ir.reported_at <= NOW() - make_interval(days => :expiry_days)
+                    AND COALESCE(SUM(rl.like_count), 0) = 0
+            )
+            DELETE FROM ridesmart.lane_gap lg
+            USING expired_reports er
+            WHERE er.issue_type = 'gap'
+              AND lg.gap_type = :gap_type
+              AND lg.detected_at = er.reported_at
+              AND (
+                    (lg.segment_id IS NULL AND er.segment_id IS NULL)
+                    OR lg.segment_id = er.segment_id
+              )
+              AND ST_DWithin(
+                    lg.geom::geography,
+                    ST_SetSRID(ST_MakePoint(er.lng, er.lat), 4326)::geography,
+                    1
+              )
+            """
+        ),
+        {
+            "expiry_days": REPORT_EXPIRY_DAYS,
+            "gap_type": LANE_GAP_TYPE_USER_REPORTED,
+        },
+    )
+
+    connection.execute(
+        text(
+            """
+            DELETE FROM ridesmart.issue_report
+            WHERE report_id IN (
+                SELECT ir.report_id
+                FROM ridesmart.issue_report ir
+                LEFT JOIN ridesmart.report_like rl
+                  ON rl.report_id = ir.report_id
+                GROUP BY ir.report_id, ir.reported_at
+                HAVING
+                    ir.reported_at <= NOW() - make_interval(days => :expiry_days)
+                    AND COALESCE(SUM(rl.like_count), 0) = 0
+            )
+            """
+        ),
+        {
+            "expiry_days": REPORT_EXPIRY_DAYS,
+        },
+    )
 
 
 def ensure_local_uuid_user_exists(connection, user_id: str) -> None:
