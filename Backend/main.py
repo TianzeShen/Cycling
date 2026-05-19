@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:
     # Support running from the repo root: `uvicorn Backend.main:app --reload`
+    from Backend.routers.auth import router as auth_router
     from Backend.routers.feasibility import router as feasibility_router
     from Backend.routers.heatmap import router as heatmap_router
     from Backend.routers.reports import router as reports_router
@@ -10,6 +11,7 @@ try:
     from Backend.services.heatmap_service import warm_melbourne_heatmap_cache
 except ModuleNotFoundError:
     # Support running inside the Backend folder: `uvicorn main:app --reload`
+    from routers.auth import router as auth_router
     from routers.feasibility import router as feasibility_router
     from routers.heatmap import router as heatmap_router
     from routers.reports import router as reports_router
@@ -37,6 +39,7 @@ def preload_heatmap_cache() -> None:
 
 
 # Keep API routes grouped under their feature modules.
+app.include_router(auth_router)
 app.include_router(feasibility_router)
 app.include_router(heatmap_router)
 app.include_router(reports_router)

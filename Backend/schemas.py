@@ -265,3 +265,34 @@ class ReportLikeResponse(BaseModel):
     report_id: str
     like_count: int = 0
     liked_by_current_user: bool
+
+
+class AuthRegisterRequest(BaseModel):
+    user_id: str = Field(..., description="Stable guest UUID currently stored on this device.")
+    username: str = Field(..., min_length=1, max_length=50, description="Human-readable username used for account recovery.")
+
+    @field_validator("user_id", "username")
+    @classmethod
+    def validate_auth_text_fields(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Field must not be empty.")
+        return value
+
+
+class AuthLoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50, description="Previously registered username.")
+
+    @field_validator("username")
+    @classmethod
+    def validate_login_username(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("username must not be empty.")
+        return value
+
+
+class AuthUserResponse(BaseModel):
+    user_id: str
+    username: str | None = None
+    is_registered: bool
