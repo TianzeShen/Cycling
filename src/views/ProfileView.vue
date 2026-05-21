@@ -40,16 +40,16 @@ const badgeCatalog = [
     name: 'First Report',
     detail: 'Submit your first cycling gap report.',
     thresholdLabel: '1 report',
-    requirement: (stats) => stats.submittedReports >= 1,
-    progress: (stats) => Math.min(stats.submittedReports / 1, 1),
+    requirement: (stats) => stats.safetyPoints >= 10,
+    progress: (stats) => Math.min(stats.safetyPoints / 10, 1),
   },
   {
     id: 'gap-spotter',
     name: 'Gap Spotter',
     detail: 'Submit 5 cycling gap reports from this device.',
     thresholdLabel: '5 reports',
-    requirement: (stats) => stats.submittedReports >= 5,
-    progress: (stats) => Math.min(stats.submittedReports / 5, 1),
+    requirement: (stats) => stats.safetyPoints >= 50,
+    progress: (stats) => Math.min(stats.safetyPoints / 50, 1),
   },
   {
     id: 'safety-builder',
@@ -100,17 +100,6 @@ const resolvedReports = computed(
   () => reports.value.filter((report) => normaliseStatus(report.status) === 'resolved').length,
 )
 
-function getBackendReportLikes(report) {
-  const likes = Number(report?.like_count ?? report?.likes ?? report?.likeCount)
-  return Number.isFinite(likes) && likes >= 0 ? likes : null
-}
-
-function getProfileReportLikes(report) {
-  const backendLikes = getBackendReportLikes(report)
-
-  return backendLikes ?? 0
-}
-
 const safetyPoints = computed(() => {
   const rewardPoints = Number(authIdentity.value.reward_points)
 
@@ -119,9 +108,11 @@ const safetyPoints = computed(() => {
 
 const routesImproved = computed(() => validatedReports.value + resolvedReports.value)
 
-const likesReceived = computed(() =>
-  reports.value.reduce((total, report) => total + getProfileReportLikes(report), 0),
-)
+const likesReceived = computed(() => {
+  const likesTotal = Number(authIdentity.value.likes_received_total)
+
+  return Number.isFinite(likesTotal) && likesTotal >= 0 ? likesTotal : 0
+})
 
 const stats = computed(() => ({
   submittedReports: submittedReports.value,
@@ -203,6 +194,9 @@ function applyAuthIdentity(identity, { syncRegisterInput = true } = {}) {
     username: identity?.username || null,
     is_registered: Boolean(identity?.is_registered),
     reward_points: Number.isFinite(Number(identity?.reward_points)) ? Number(identity.reward_points) : 0,
+    likes_received_total: Number.isFinite(Number(identity?.likes_received_total))
+      ? Number(identity.likes_received_total)
+      : 0,
   }
 
   if (syncRegisterInput) {
