@@ -99,8 +99,10 @@ const routeSegments = ref(
 )
 const heatmapRegions = ref([])
 const activeHeatmapRegion = ref(null)
+const hasManualHeatmapSelection = ref(false)
 const isHeatmapLoading = ref(false)
 const heatmapError = ref('')
+const heatmapStatusMessage = ref('')
 const locationStatus = ref(
   shouldRestoreMapState ? savedMapState.locationStatus || 'Route restored from this tab.' : 'Locating your current position...',
 )
@@ -129,6 +131,46 @@ function riskTone(riskLevel) {
   }
 
   return 'green'
+}
+
+function riskDescription(riskLevel) {
+  const normalisedRisk = String(riskLevel || '').toLowerCase()
+
+  if (normalisedRisk === 'red') {
+    return 'Critical signal: this area has the strongest combination of risk factors in the safety layer.'
+  }
+
+  if (normalisedRisk === 'yellow') {
+    return 'High signal: this area has some elevated safety indicators compared with safer regions.'
+  }
+
+  if (normalisedRisk === 'green') {
+    return 'Safe signal: this area currently has a lower safety risk signal in the heatmap.'
+  }
+
+  return 'Risk level is pending from the backend.'
+}
+
+function formatNullableNumber(value, digits = 0) {
+  const number = toFiniteNumber(value)
+
+  if (number === null) {
+    return 'N/A'
+  }
+
+  return number.toFixed(digits)
+}
+
+function formatPercentValue(value) {
+  const number = toFiniteNumber(value)
+
+  if (number === null) {
+    return 'N/A'
+  }
+
+  const percent = Math.abs(number) <= 1 ? number * 100 : number
+
+  return `${percent.toFixed(percent >= 10 ? 1 : 2)}%`
 }
 
 function getSegmentMidpoint(segment) {
@@ -670,6 +712,96 @@ function handleHeatmapRegionHover(region) {
   activeHeatmapRegion.value = region
 }
 
+function handleHeatmapRegionSelected() {
+  hasManualHeatmapSelection.value = true
+}
+
+function regionToPanelRegion(region) {
+  if (!region) {
+    return null
+  }
+
+  return {
+    sa2Code: region.sa2_code || '',
+    name: region.suburb_name || 'Selected region',
+    riskLevel: region.risk_level || 'Unknown',
+    score: toFiniteNumber(region.score) === null ? null : Math.round(Number(region.score)),
+    intensity: toFiniteNumber(region.intensity) === null ? null : Math.round(Number(region.intensity)),
+    shortCommutePct: toFiniteNumber(region.short_commute_pct),
+    zeroCarHouseholdPct: toFiniteNumber(region.zero_car_household_pct),
+    workingPopulationRatio: toFiniteNumber(region.working_population_ratio),
+  }
+}
+
+function pointInRing(lng, lat, ring) {
+  if (!Array.isArray(ring) || ring.length < 3) {
+    return false
+  }
+
+  let inside = false
+
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    const currentPoint = ring[index]
+    const previousPoint = ring[previous]
+
+    if (!Array.isArray(currentPoint) || !Array.isArray(previousPoint)) {
+      continue
+    }
+
+    const [currentLng, currentLat] = currentPoint
+    const [previousLng, previousLat] = previousPoint
+    const crosses =
+      currentLat > lat !== previousLat > lat &&
+      lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat || 1) + currentLng
+
+    if (crosses) {
+      inside = !inside
+    }
+  }
+
+  return inside
+}
+
+function pointInPolygonCoordinates(lng, lat, polygonCoordinates) {
+  if (!Array.isArray(polygonCoordinates) || !polygonCoordinates.length) {
+    return false
+  }
+
+  const [outerRing, ...holes] = polygonCoordinates
+
+  return pointInRing(lng, lat, outerRing) && !holes.some((ring) => pointInRing(lng, lat, ring))
+}
+
+function pointInRegion(location, region) {
+  if (!isCoordinatePair(location) || !region?.geometry) {
+    return false
+  }
+
+  const [lat, lng] = location.map(Number)
+  const { type, coordinates } = region.geometry
+
+  if (type === 'Polygon') {
+    return pointInPolygonCoordinates(lng, lat, coordinates)
+  }
+
+  if (type === 'MultiPolygon') {
+    return coordinates.some((polygon) => pointInPolygonCoordinates(lng, lat, polygon))
+  }
+
+  return false
+}
+
+function selectDefaultHeatmapRegion() {
+  if (hasManualHeatmapSelection.value || !heatmapRegions.value.length || !isCoordinatePair(startCoordinate.value)) {
+    return
+  }
+
+  const currentRegion = heatmapRegions.value.find((region) => pointInRegion(startCoordinate.value, region))
+  const fallbackRegion = heatmapRegions.value[0]
+
+  activeHeatmapRegion.value = regionToPanelRegion(currentRegion || fallbackRegion)
+}
+
 function formatBackendError(error, fallbackMessage) {
   const detail = String(error?.detail || error?.message || '').trim()
 
@@ -830,6 +962,31 @@ const hasPlannedRoute = computed(() =>
       routeAlerts.value.length,
   ),
 )
+const activeHeatmapMetrics = computed(() => {
+  const region = activeHeatmapRegion.value
+
+  if (!region) {
+    return []
+  }
+
+  return [
+    {
+      label: 'Working pop.',
+      value: formatPercentValue(region.workingPopulationRatio),
+      help: 'Workers compared with residents',
+    },
+    {
+      label: 'Short commute',
+      value: formatPercentValue(region.shortCommutePct),
+      help: 'Commuters with shorter trips',
+    },
+    {
+      label: 'No-car homes',
+      value: formatPercentValue(region.zeroCarHouseholdPct),
+      help: 'Households without a car',
+    },
+  ]
+})
 
 function saveMapState() {
   const state = {
@@ -870,13 +1027,16 @@ async function loadMelbourneSa2Heatmap() {
 
   isHeatmapLoading.value = true
   heatmapError.value = ''
+  heatmapStatusMessage.value = ''
 
   try {
     const response = await getMelbourneSa2Heatmap()
     heatmapRegions.value = response.regions || []
-    activeHeatmapRegion.value = null
+    heatmapStatusMessage.value = response.status_message || ''
+    selectDefaultHeatmapRegion()
   } catch (error) {
     heatmapError.value = 'SA2 safety layer failed to load from the backend.'
+    heatmapStatusMessage.value = ''
   } finally {
     isHeatmapLoading.value = false
   }
@@ -1035,6 +1195,7 @@ async function showHeatmapPanelMode() {
   mode.value = mapModes.heatmapPanel
   isSidePanelVisible.value = true
   await loadMelbourneSa2Heatmap()
+  selectDefaultHeatmapRegion()
 }
 
 function showHeatmapMapOnlyMode() {
@@ -1079,6 +1240,7 @@ function handleLocationFound(location) {
   hasStartCoordinate.value = true
   startSuggestions.value = []
   locationStatus.value = 'Using your current location as the start point.'
+  selectDefaultHeatmapRegion()
 }
 
 function requestBrowserLocation(options) {
@@ -1244,6 +1406,16 @@ watch(
     showReportMarkers,
   ],
   saveMapState,
+  { deep: true },
+)
+
+watch(
+  startCoordinate,
+  () => {
+    if (isHeatmapMode.value) {
+      selectDefaultHeatmapRegion()
+    }
+  },
   { deep: true },
 )
 
@@ -1444,6 +1616,7 @@ const mobileAnalysisStyle = computed(() => ({
         :trip-progress-index="tripProgressIndex"
         :trip-follow-point="tripLiveLocation"
         :heatmap-regions="heatmapRegions"
+        :selected-heatmap-region-code="activeHeatmapRegion?.sa2Code || ''"
         :alerts="routeAlerts"
         :start-point="startCoordinate"
         :end-point="endCoordinate"
@@ -1451,6 +1624,7 @@ const mobileAnalysisStyle = computed(() => ({
         :show-report-markers="showReportMarkers"
         @location-found="handleLocationFound"
         @heatmap-region-hover="handleHeatmapRegionHover"
+        @heatmap-region-selected="handleHeatmapRegionSelected"
         @report-location="handleReportLocation"
         @report-like-updated="handleReportLikeUpdated"
         @route-selected="setActiveRoute"
@@ -1614,7 +1788,12 @@ const mobileAnalysisStyle = computed(() => ({
     </button>
 
     <transition name="panel-slide">
-      <aside v-if="showSidePanel" ref="mapSidePanel" class="map-side-panel">
+      <aside
+        v-if="showSidePanel"
+        ref="mapSidePanel"
+        class="map-side-panel"
+        :class="{ 'heatmap-side-panel': showHeatmapPanel }"
+      >
         <form
           v-if="showRouteControls"
           class="glass-panel compact-planner"
@@ -1742,13 +1921,20 @@ const mobileAnalysisStyle = computed(() => ({
           <div class="panel-header-row">
             <div>
               <h2>Safety Layer</h2>
-              <p>{{ heatmapRegions.length }} SA2 regions loaded.</p>
+              <p>
+                {{
+                  isHeatmapLoading
+                    ? 'Loading SA2 safety data...'
+                    : `${heatmapRegions.length} SA2 regions loaded.`
+                }}
+              </p>
             </div>
             <button type="button" class="side-panel-toggle side-panel-toggle-hide" @click="hideSidePanel">
               Hide
             </button>
           </div>
           <p v-if="heatmapError" class="status-text">{{ heatmapError }}</p>
+          <p v-else-if="heatmapStatusMessage" class="status-text">{{ heatmapStatusMessage }}</p>
         </div>
 
         <article class="heatmap-region-card">
@@ -1758,18 +1944,40 @@ const mobileAnalysisStyle = computed(() => ({
             <div class="heatmap-region-summary">
               <div>
                 <h3>{{ activeHeatmapRegion.name }}</h3>
-                <p>Move across the heatmap to compare neighbourhood risk signals.</p>
+                <p>{{ riskDescription(activeHeatmapRegion.riskLevel) }}</p>
               </div>
               <span class="pill" :class="`pill-${riskTone(activeHeatmapRegion.riskLevel)}`">
                 {{ activeHeatmapRegion.riskLevel }}
               </span>
             </div>
 
-            <div class="heatmap-region-metrics">
-              <div class="heatmap-metric">
-                <span class="metric-label">Score</span>
-                <strong>{{ activeHeatmapRegion.score ?? 'N/A' }}</strong>
+            <div
+              class="heatmap-score-strip"
+              :class="`heatmap-score-strip-${riskTone(activeHeatmapRegion.riskLevel)}`"
+            >
+              <div>
+                <span class="metric-label">Risk score</span>
+                <strong>{{ formatNullableNumber(activeHeatmapRegion.score) }}</strong>
               </div>
+              <span>out of 100</span>
+            </div>
+
+            <div class="heatmap-region-metrics">
+              <div
+                v-for="metric in activeHeatmapMetrics"
+                :key="metric.label"
+                class="heatmap-metric"
+              >
+                <span class="metric-label">{{ metric.label }}</span>
+                <strong>{{ metric.value }}</strong>
+                <p>{{ metric.help }}</p>
+              </div>
+            </div>
+
+            <div class="heatmap-card-legend" aria-label="Heatmap legend">
+              <span><i class="legend-critical"></i> Red higher</span>
+              <span><i class="legend-high"></i> Yellow moderate</span>
+              <span><i class="legend-medium"></i> Green lower</span>
             </div>
           </template>
 
@@ -1779,16 +1987,6 @@ const mobileAnalysisStyle = computed(() => ({
           </div>
         </article>
 
-        <div class="heatmap-panel-grid">
-          <div class="heatmap-support-card">
-            <span class="panel-kicker">Legend</span>
-            <div class="heatmap-legend" aria-label="Heatmap legend">
-              <span><i class="legend-critical"></i> Critical</span>
-              <span><i class="legend-high"></i> High</span>
-              <span><i class="legend-medium"></i> Safe</span>
-            </div>
-          </div>
-        </div>
       </section>
 
       <transition name="slide-up">

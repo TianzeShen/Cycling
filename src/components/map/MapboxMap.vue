@@ -49,6 +49,10 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  selectedHeatmapRegionCode: {
+    type: String,
+    default: '',
+  },
   alerts: {
     type: Array,
     default: () => [],
@@ -78,6 +82,7 @@ const props = defineProps({
 const emit = defineEmits([
   'location-found',
   'heatmap-region-hover',
+  'heatmap-region-selected',
   'report-location',
   'route-selected',
   'report-like-updated',
@@ -97,6 +102,7 @@ let longPressPoint = null
 let heatmapHoverFrame = null
 let pendingHeatmapHoverFeature = null
 let lastHeatmapHoverCode = null
+let selectedHeatmapPulseFrame = null
 let hoveredAlternativeRouteId = null
 const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 const mapStyle = import.meta.env.VITE_MAPBOX_STYLE || 'mapbox://styles/mapbox/streets-v12'
@@ -126,6 +132,13 @@ function clearPendingHeatmapHover() {
   }
 
   pendingHeatmapHoverFeature = null
+}
+
+function clearSelectedHeatmapPulse() {
+  if (selectedHeatmapPulseFrame) {
+    window.cancelAnimationFrame(selectedHeatmapPulseFrame)
+    selectedHeatmapPulseFrame = null
+  }
 }
 
 function clearReportLikeTimer() {
@@ -426,6 +439,7 @@ function reportToFeature(report, index) {
 function heatmapRegionToFeature(region) {
   return {
     type: 'Feature',
+    id: region.sa2_code,
     properties: {
       sa2Code: region.sa2_code,
       suburbName: region.suburb_name,
@@ -535,6 +549,48 @@ function setLayerVisibility(id, visible) {
   if (map.value?.getLayer(id)) {
     map.value.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none')
   }
+}
+
+function updateSelectedHeatmapRegion() {
+  if (!mapReady.value) {
+    return
+  }
+
+  const selectedCode = props.selectedHeatmapRegionCode || ''
+  const filter = selectedCode
+    ? ['==', ['get', 'sa2Code'], selectedCode]
+    : ['==', ['get', 'sa2Code'], '__none__']
+
+  if (map.value?.getLayer('sa2-heatmap-selected-fill')) {
+    map.value.setFilter('sa2-heatmap-selected-fill', filter)
+  }
+
+  if (map.value?.getLayer('sa2-heatmap-selected-line')) {
+    map.value.setFilter('sa2-heatmap-selected-line', filter)
+  }
+
+  clearSelectedHeatmapPulse()
+
+  if (!selectedCode || !map.value?.getLayer('sa2-heatmap-selected-line')) {
+    return
+  }
+
+  const startedAt = performance.now()
+  const pulse = (timestamp) => {
+    if (!map.value?.getLayer('sa2-heatmap-selected-line')) {
+      selectedHeatmapPulseFrame = null
+      return
+    }
+
+    const progress = ((timestamp - startedAt) % 1200) / 1200
+    const wave = (Math.sin(progress * Math.PI * 2) + 1) / 2
+
+    map.value.setPaintProperty('sa2-heatmap-selected-line', 'line-width', 2.2 + wave * 2.4)
+    map.value.setPaintProperty('sa2-heatmap-selected-line', 'line-opacity', 0.55 + wave * 0.4)
+    selectedHeatmapPulseFrame = window.requestAnimationFrame(pulse)
+  }
+
+  selectedHeatmapPulseFrame = window.requestAnimationFrame(pulse)
 }
 
 function updateRouteData() {
@@ -681,6 +737,8 @@ function updateLayerVisibility() {
   setLayerVisibility('route-end-core', !isHeatmap)
   setLayerVisibility('sa2-heatmap-fills', isHeatmap)
   setLayerVisibility('sa2-heatmap-lines', isHeatmap)
+  setLayerVisibility('sa2-heatmap-selected-fill', isHeatmap)
+  setLayerVisibility('sa2-heatmap-selected-line', isHeatmap)
   setLayerVisibility('community-heatmap', isHeatmap)
   setLayerVisibility('community-report-halo', showReportMarkers)
   setLayerVisibility('community-circles', showReportMarkers)
@@ -980,6 +1038,7 @@ function emitHeatmapRegionHover(feature) {
   const workingPopulationValue = Number(properties.workingPopulationRatio)
 
   emit('heatmap-region-hover', {
+    sa2Code: properties.sa2Code || '',
     name: properties.suburbName || 'Selected region',
     riskLevel: properties.riskLevel || 'Unknown',
     score: Number.isFinite(scoreValue) ? Math.round(scoreValue) : null,
@@ -1259,8 +1318,36 @@ function addMapLayers() {
     },
   })
 
+  map.value.addLayer({
+    id: 'sa2-heatmap-selected-fill',
+    type: 'fill',
+    source: 'sa2-heatmap-regions',
+    filter: ['==', ['get', 'sa2Code'], '__none__'],
+    paint: {
+      'fill-color': '#ffffff',
+      'fill-opacity': 0.22,
+    },
+  })
+
+  map.value.addLayer({
+    id: 'sa2-heatmap-selected-line',
+    type: 'line',
+    source: 'sa2-heatmap-regions',
+    filter: ['==', ['get', 'sa2Code'], '__none__'],
+    paint: {
+      'line-color': '#ffffff',
+      'line-opacity': 0.92,
+      'line-width': 3,
+      'line-blur': 0.4,
+    },
+  })
+
   map.value.on('mousemove', 'sa2-heatmap-fills', (event) => {
     map.value.getCanvas().style.cursor = 'pointer'
+
+    if (props.selectedHeatmapRegionCode) {
+      return
+    }
 
     const feature = event.features?.[0]
     const regionCode = feature?.properties?.sa2Code || feature?.properties?.suburbName
@@ -1279,6 +1366,17 @@ function addMapLayers() {
         pendingHeatmapHoverFeature = null
       })
     }
+  })
+
+  map.value.on('click', 'sa2-heatmap-fills', (event) => {
+    const feature = event.features?.[0]
+
+    if (!feature) {
+      return
+    }
+
+    emitHeatmapRegionHover(feature)
+    emit('heatmap-region-selected')
   })
 
   map.value.on('mouseleave', 'sa2-heatmap-fills', () => {
@@ -1479,6 +1577,7 @@ onMounted(() => {
     addMapLayers()
     mapReady.value = true
     updateLayers()
+    updateSelectedHeatmapRegion()
 
     if (props.autoGeolocate) {
       setTimeout(() => {
@@ -1552,6 +1651,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearLongPressTimer()
   clearPendingHeatmapHover()
+  clearSelectedHeatmapPulse()
   clearReportLikeTimer()
   setMapMovingClass(false)
   map.value?.remove()
@@ -1620,8 +1720,16 @@ watch(
 
 watch(
   () => props.heatmapRegions,
-  updateHeatmapData,
+  () => {
+    updateHeatmapData()
+    updateSelectedHeatmapRegion()
+  },
   { deep: true },
+)
+
+watch(
+  () => props.selectedHeatmapRegionCode,
+  updateSelectedHeatmapRegion,
 )
 
 watch(
