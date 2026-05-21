@@ -233,6 +233,10 @@ label {
   color: var(--dark);
 }
 
+.header-nav-main a.router-link-active {
+  color: var(--primary-hover);
+}
+
 .brand-logo {
   color: var(--dark) !important;
   font-size: 1.5rem !important;

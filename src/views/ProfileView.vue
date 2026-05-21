@@ -197,23 +197,26 @@ function formatCoordinate(value) {
   return Number.isFinite(number) ? number.toFixed(6) : 'N/A'
 }
 
-function applyAuthIdentity(identity) {
+function applyAuthIdentity(identity, { syncRegisterInput = true } = {}) {
   authIdentity.value = {
     user_id: identity?.user_id || getRideSmartUserId(),
     username: identity?.username || null,
     is_registered: Boolean(identity?.is_registered),
     reward_points: Number.isFinite(Number(identity?.reward_points)) ? Number(identity.reward_points) : 0,
   }
-  registerUsernameInput.value = displayUsername.value
+
+  if (syncRegisterInput) {
+    registerUsernameInput.value = displayUsername.value
+  }
 }
 
-async function loadAuthIdentity({ silent = false } = {}) {
+async function loadAuthIdentity({ silent = false, syncRegisterInput = true } = {}) {
   if (!silent) {
     authErrorMessage.value = ''
   }
 
   try {
-    applyAuthIdentity(await getCurrentAuthIdentity())
+    applyAuthIdentity(await getCurrentAuthIdentity(), { syncRegisterInput })
   } catch (error) {
     if (!silent) {
       authErrorMessage.value = 'Unable to check sync status right now.'
@@ -295,7 +298,7 @@ async function loadProfileReports({ silent = false } = {}) {
 function startProfileReportsPolling() {
   window.clearInterval(profileReportsRefreshTimer)
   profileReportsRefreshTimer = window.setInterval(() => {
-    loadAuthIdentity({ silent: true })
+    loadAuthIdentity({ silent: true, syncRegisterInput: false })
     loadProfileReports({ silent: true })
   }, 5000)
 }
