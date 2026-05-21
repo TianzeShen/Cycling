@@ -2006,6 +2006,20 @@ code {
   margin: 0;
 }
 
+.report-location-hint-touch {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .report-location-hint-desktop {
+    display: none;
+  }
+
+  .report-location-hint-touch {
+    display: block;
+  }
+}
+
 .planner-header-actions {
   align-items: center;
   display: flex;
@@ -5592,15 +5606,6 @@ code {
 
 .rs-location-inline .rs-meta-header {
   margin-bottom: 1rem;
-}
-
-.rs-report-time-inline {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  padding-bottom: 1.1rem;
-}
-
-.rs-report-time-inline .rs-meta-header {
-  margin-bottom: 0.7rem;
 }
 
 .rs-field-group {

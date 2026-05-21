@@ -21,74 +21,100 @@ const MAP_ROUTE_BODY_CLASS = 'map-route-active'
 const helpContentByRoute = {
   home: {
     title: 'Welcome to RydeSmrt',
-    summary: 'Start here to understand what the app does before planning a ride.',
+    summary: 'Start here to access your profile, understand the app, and plan a ride.',
     steps: [
       {
-        title: 'Start with the main actions',
-        body: 'Use Launch Map to plan a ride, or open Report Issue when you already know the location of a cycling hazard.',
+        title: 'Choose an entry point',
+        body: 'Use Launch Map to plan a ride, or open Access Profile to create, manage, or recover your username.',
       },
       {
-        title: 'Understand the intelligence signals',
-        body: 'The overview explains safety scoring, risk segments, local reports, heatmaps, and the data sources behind RydeSmrt.',
+        title: 'Scan the core capabilities',
+        body: 'The homepage introduces route comparison, SA2 safety heatmaps, community reporting, and the signals behind riding decisions.',
       },
       {
-        title: 'Read the data disclaimer',
-        body: 'The footer explains that AI-generated safety signals are informational and that real road conditions can still change.',
+        title: 'Check riding conditions',
+        body: 'Open Explore conditions to review terrain, UV, and air-quality context before deciding when and where to ride.',
+      },
+      {
+        title: 'Read the data note',
+        body: 'The footer explains that AI-generated safety signals are informational and real road conditions can still change.',
       },
     ],
   },
   map: {
     title: 'Use the map workspace',
-    summary: 'Plan routes, compare safety signals, inspect warnings, and choose report locations from the map.',
+    summary: 'Plan a route, compare safety signals, start navigation, inspect the heatmap, and report hazards.',
     steps: [
       {
-        title: 'Set your start point',
-        body: 'Type an address or use the location icon to set your current position as the route start.',
+        title: 'Set route locations',
+        body: 'Type a start and destination, select address suggestions, or use the location icon for your current start point.',
       },
       {
-        title: 'Choose a destination',
-        body: 'Enter your destination and select a suggestion so RydeSmrt can use exact coordinates for routing.',
+        title: 'Compare route options',
+        body: 'Select Generate Route, then compare route cards, travel time, distance, score, warnings, and gap signals.',
       },
       {
-        title: 'Generate and compare routes',
-        body: 'Select Generate Route to view route options with travel time, distance, the Safety Score panel, warnings, and gap segments.',
+        title: 'Start the trip',
+        body: 'Choose a route and use Start Trip for live progress. If the ride drifts off route, recalculate or end navigation.',
       },
       {
-        title: 'Switch map modes',
-        body: 'Use Route and Heatmap controls to switch between route planning and the city-wide safety layer.',
+        title: 'Explore the safety layer',
+        body: 'Switch to Heatmap and select an SA2 region to inspect risk level, risk score, and supporting safety metrics.',
       },
       {
-        title: 'Report from the map',
-        body: 'On desktop, right-click a location and choose Report gap here. On mobile, long-press the map to open the same report action.',
+        title: 'Report a hazard',
+        body: 'Right-click the map on desktop or long-press on mobile, then choose Report gap here to send the location to the report form.',
       },
     ],
   },
   report: {
     title: 'Submit a hazard report',
-    summary: 'Create a user-reported infrastructure gap with map location, current time, notes, and local identity.',
+    summary: 'Turn a selected map location into a hazard report with type, notes, and your local contribution history.',
     steps: [
       {
-        title: 'Start from a map location',
-        body: 'Reports are created from the map. The selected place name, coordinates, and current report time are shown at the top of the form.',
+        title: 'Choose the location',
+        body: 'Reports start from a map selection. Use Select on Map or relocate from the map if the displayed coordinates need changing.',
       },
       {
-        title: 'Review the report type',
-        body: 'The current minimum version automatically classifies the issue as an infrastructure gap.',
+        title: 'Review map details',
+        body: 'The selected place, coordinates, and current report time appear before you submit the hazard.',
       },
       {
-        title: 'Add field notes',
-        body: 'Use Field Notes to describe the hazard, such as a missing lane, unsafe merge, obstruction, or sudden gap.',
+        title: 'Describe the hazard',
+        body: 'Choose the Issue Type and add Field Notes for context, such as a blocked lane, unsafe intersection, poor surface, or debris.',
       },
       {
         title: 'Broadcast the report',
-        body: 'Select Broadcast Report to submit it with your local RydeSmrt user ID. The sidebar shows your identity and contribution log.',
+        body: 'Select Broadcast Report to submit with your local identity. The sidebar keeps your reporter ID and contribution log visible.',
+      },
+    ],
+  },
+  conditions: {
+    title: 'Review safety insights',
+    summary: 'Use riding-condition context alongside route and heatmap signals before heading out.',
+    steps: [
+      {
+        title: 'Read terrain context',
+        body: 'The elevation section explains how Melbourne road gradients affect effort, braking, and route comfort.',
+      },
+      {
+        title: 'Check UV exposure',
+        body: 'Use the UV chart and threshold note to spot periods when sun protection matters more.',
+      },
+      {
+        title: 'Check air quality',
+        body: 'The PM2.5 chart highlights air-quality guidance and conditions where outdoor cycling may be less suitable.',
       },
     ],
   },
   profile: {
-    title: 'Track your impact',
-    summary: 'Review your contribution score, reward progress, badges, report status, and submitted report history.',
+    title: 'Use your profile',
+    summary: 'Access your username, review your contribution progress, and manage submitted reports.',
     steps: [
+      {
+        title: 'Access your username',
+        body: 'Use Username Access to create a username, update the linked username, or continue with an existing username.',
+      },
       {
         title: 'Read your contribution summary',
         body: 'The top section shows safety points, submitted reports, platform-validated reports, routes improved, and your local user ID.',
@@ -103,7 +129,7 @@ const helpContentByRoute = {
       },
       {
         title: 'Manage submitted reports',
-        body: 'In My submitted reports, refresh activity, edit a report description, or delete your own report when the backend endpoint is available.',
+        body: 'In My submitted reports, refresh activity, edit a report description, or delete one of your submitted reports.',
       },
     ],
   },

@@ -195,7 +195,8 @@ onBeforeUnmount(() => {
           </p>
           <div class="report-entry-hint" aria-label="How to choose report location">
             <span>Choose location from map</span>
-            <p>Desktop: right-click the map. Mobile: long-press a location.</p>
+            <p class="report-location-hint-desktop">Right-click a map location to continue.</p>
+            <p class="report-location-hint-touch">Long-press a map location to continue.</p>
           </div>
         </header>
 
@@ -211,15 +212,9 @@ onBeforeUnmount(() => {
               <div class="rs-coord-row">
                 <span class="rs-mono">LAT {{ formatCoordinate(latitude) }}</span>
                 <span class="rs-mono">LNG {{ formatCoordinate(longitude) }}</span>
+                <span class="rs-mono">TIME {{ currentReportTimeLabel }}</span>
               </div>
             </div>
-          </section>
-
-          <section class="rs-report-time-inline">
-            <div class="rs-meta-header">
-              <h3>Report Time</h3>
-            </div>
-            <span class="rs-mono">{{ currentReportTimeLabel }}</span>
           </section>
 
           <div class="rs-field-group">

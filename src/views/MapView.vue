@@ -1775,7 +1775,8 @@ const mobileAnalysisStyle = computed(() => ({
       aria-label="How to report a map issue"
     >
       <span>Report a hazard</span>
-      <p>Desktop: right-click the map. Mobile: long-press a location.</p>
+      <p class="report-location-hint-desktop">Right-click a map location.</p>
+      <p class="report-location-hint-touch">Long-press a map location.</p>
     </div>
 
     <button
