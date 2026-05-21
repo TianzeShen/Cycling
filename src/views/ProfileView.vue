@@ -436,15 +436,15 @@ onBeforeUnmount(() => {
       <article id="simple-recovery" class="profile-panel profile-account-panel">
         <div class="profile-panel-header">
           <div>
-            <span class="panel-kicker">Simple recovery</span>
-            <h2>{{ isRegistered ? 'Username linked' : 'Sync this guest data' }}</h2>
+            <span class="panel-kicker">Username access</span>
+            <h2>{{ isRegistered ? 'Manage your username' : 'Create a username' }}</h2>
           </div>
           <span class="profile-pill">{{ isRegistered ? 'Linked' : 'Guest' }}</span>
         </div>
 
         <p class="profile-account-note">
-          This is simple username recovery without a password. Anyone who knows the username can restore the same
-          RydeSmrt data.
+          Create or use a username to access RydeSmrt data. No password is required, so anyone who knows the username
+          can restore the same data.
         </p>
 
         <div class="profile-auth-tabs" role="tablist" aria-label="Account recovery options">
@@ -453,15 +453,17 @@ onBeforeUnmount(() => {
             :class="{ active: authMode === 'register' }"
             @click="authMode = 'register'"
           >
-            Save my data
+            {{ isRegistered ? 'Manage Username' : 'Create Username' }}
           </button>
           <button type="button" :class="{ active: authMode === 'login' }" @click="authMode = 'login'">
-            Use existing username
+            Use Existing Username
           </button>
         </div>
 
         <form v-if="authMode === 'register'" class="profile-auth-form" @submit.prevent="saveUsername">
-          <label for="profile-register-username">Username for this local data</label>
+          <label for="profile-register-username">
+            {{ isRegistered ? 'Update username for this local data' : 'Username for this local data' }}
+          </label>
           <div class="profile-auth-row">
             <input
               id="profile-register-username"
@@ -472,7 +474,7 @@ onBeforeUnmount(() => {
               type="text"
             />
             <button type="submit" class="profile-small-button profile-auth-submit primary" :disabled="isAuthLoading">
-              {{ isAuthLoading ? 'Saving...' : 'Save' }}
+              {{ isAuthLoading ? (isRegistered ? 'Updating...' : 'Creating...') : isRegistered ? 'Update' : 'Create' }}
             </button>
           </div>
         </form>
@@ -489,7 +491,7 @@ onBeforeUnmount(() => {
               type="text"
             />
             <button type="submit" class="profile-small-button profile-auth-submit primary" :disabled="isAuthLoading">
-              {{ isAuthLoading ? 'Restoring...' : 'Restore' }}
+              {{ isAuthLoading ? 'Continuing...' : 'Continue' }}
             </button>
           </div>
         </form>

@@ -11,7 +11,7 @@
         </p>
         <div class="hero-cta-group">
           <RouterLink to="/map" class="btn-primary-glow">Launch Map</RouterLink>
-          <RouterLink to="/report" class="btn-glass">Report Issue</RouterLink>
+          <RouterLink :to="{ path: '/profile', hash: '#simple-recovery' }" class="btn-glass">Access Profile</RouterLink>
         </div>
       </div>
       <div class="scroll-prompt">
