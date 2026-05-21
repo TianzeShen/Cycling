@@ -407,10 +407,6 @@ onBeforeUnmount(() => {
       <div>
         <span class="eyebrow-dark">Reward & Engagement System</span>
         <h1>{{ safetyPoints }} safety points</h1>
-        <p>
-          {{ submittedReports }} reports submitted - {{ validatedReports }} reports validated -
-          {{ routesImproved }} routes improved
-        </p>
         <p class="profile-user-id">
           {{ isRegistered ? `Simple recovery username: ${displayUsername}` : 'Guest mode: not linked to a username' }}
           <br />
