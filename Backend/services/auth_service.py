@@ -56,7 +56,8 @@ def register_username(payload: AuthRegisterRequest) -> AuthUserResponse:
                         user_id::text AS user_id,
                         username,
                         COALESCE(is_registered, false) AS is_registered,
-                        COALESCE(reward_points, 0)::int AS reward_points
+                        COALESCE(reward_points, 0)::int AS reward_points,
+                        COALESCE(likes_received_total, 0)::int AS likes_received_total
                     """
                 ),
                 {
@@ -82,7 +83,8 @@ def login_with_username(payload: AuthLoginRequest) -> AuthUserResponse:
             user_id::text AS user_id,
             username,
             COALESCE(is_registered, false) AS is_registered,
-            COALESCE(reward_points, 0)::int AS reward_points
+            COALESCE(reward_points, 0)::int AS reward_points,
+            COALESCE(likes_received_total, 0)::int AS likes_received_total
         FROM ridesmart.app_user
         WHERE username_normalized = :username_normalized
           AND COALESCE(is_registered, false) = true
@@ -102,7 +104,8 @@ def get_user_identity(user_id: str) -> AuthUserResponse:
             user_id::text AS user_id,
             username,
             COALESCE(is_registered, false) AS is_registered,
-            COALESCE(reward_points, 0)::int AS reward_points
+            COALESCE(reward_points, 0)::int AS reward_points,
+            COALESCE(likes_received_total, 0)::int AS likes_received_total
         FROM ridesmart.app_user
         WHERE user_id = CAST(:user_id AS uuid)
         LIMIT 1
@@ -117,6 +120,7 @@ def get_user_identity(user_id: str) -> AuthUserResponse:
             "username": None,
             "is_registered": False,
             "reward_points": 0,
+            "likes_received_total": 0,
         }
     return AuthUserResponse(**row)
 

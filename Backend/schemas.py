@@ -298,3 +298,4 @@ class AuthUserResponse(BaseModel):
     username: str | None = None
     is_registered: bool
     reward_points: int = 0
+    likes_received_total: int = 0

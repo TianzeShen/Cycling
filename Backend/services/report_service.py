@@ -440,6 +440,11 @@ def like_report(report_id: str, payload: ReportLikeRequest) -> ReportLikeRespons
                 owner_row["user_id"],
                 int(payload.like_count),
             )
+            increment_user_likes_received_total(
+                connection,
+                owner_row["user_id"],
+                int(payload.like_count),
+            )
         return fetch_report_like_state(
             connection=connection,
             report_id=report_id,
@@ -643,6 +648,24 @@ def increment_user_reward_points(connection, user_id: str, points: int) -> None:
         {
             "user_id": user_id,
             "points": int(points),
+        },
+    )
+
+
+def increment_user_likes_received_total(connection, user_id: str, like_count: int) -> None:
+    if like_count == 0:
+        return
+    connection.execute(
+        text(
+            """
+            UPDATE ridesmart.app_user
+            SET likes_received_total = COALESCE(likes_received_total, 0) + :like_count
+            WHERE user_id = CAST(:user_id AS uuid)
+            """
+        ),
+        {
+            "user_id": user_id,
+            "like_count": int(like_count),
         },
     )
 
