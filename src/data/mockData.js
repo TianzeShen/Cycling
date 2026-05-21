@@ -52,6 +52,6 @@ export const communityReports = [
 
 export const badges = [
   { name: 'First Report', detail: 'Submitted your first cycling issue' },
-  { name: 'Local Guide', detail: 'Validated 10 community reports' },
+  { name: 'Local Guide', detail: 'Reached 100 safety points' },
   { name: 'Safety Builder', detail: 'Helped improve high-impact routes' },
 ]

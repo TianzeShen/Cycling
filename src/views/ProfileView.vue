@@ -54,15 +54,15 @@ const badgeCatalog = [
   {
     id: 'safety-builder',
     name: 'Safety Builder',
-    detail: 'Have at least one report validated by the community.',
-    thresholdLabel: '1 validation',
-    requirement: (stats) => stats.validatedReports >= 1,
-    progress: (stats) => Math.min(stats.validatedReports / 1, 1),
+    detail: 'Receive at least 50 likes on your submitted reports.',
+    thresholdLabel: '50 likes',
+    requirement: (stats) => stats.likesReceived >= 50,
+    progress: (stats) => Math.min(stats.likesReceived / 50, 1),
   },
   {
     id: 'local-guide',
     name: 'Local Guide',
-    detail: 'Reach 100 safety points through reports and validation.',
+    detail: 'Reach 100 safety points through reports and community support.',
     thresholdLabel: '100 points',
     requirement: (stats) => stats.safetyPoints >= 100,
     progress: (stats) => Math.min(stats.safetyPoints / 100, 1),
@@ -127,6 +127,7 @@ const stats = computed(() => ({
   submittedReports: submittedReports.value,
   validatedReports: validatedReports.value,
   resolvedReports: resolvedReports.value,
+  likesReceived: likesReceived.value,
   safetyPoints: safetyPoints.value,
 }))
 
@@ -156,7 +157,7 @@ const impactSummary = computed(() => [
   {
     label: 'Validations received',
     value: validatedReports.value,
-    detail: 'Reports confirmed by backend/community status.',
+    detail: 'Reports moved to validated status by the platform.',
   },
   {
     label: 'Likes received',
@@ -404,7 +405,7 @@ onBeforeUnmount(() => {
         <span class="eyebrow-dark">Reward & Engagement System</span>
         <h1>{{ safetyPoints }} safety points</h1>
         <p>
-          {{ submittedReports }} reports submitted - {{ validatedReports }} validations received -
+          {{ submittedReports }} reports submitted - {{ validatedReports }} reports validated -
           {{ routesImproved }} routes improved
         </p>
         <p class="profile-user-id">

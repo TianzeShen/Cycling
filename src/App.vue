@@ -91,7 +91,7 @@ const helpContentByRoute = {
     steps: [
       {
         title: 'Read your contribution summary',
-        body: 'The top section shows safety points, submitted reports, validations received, routes improved, and your local user ID.',
+        body: 'The top section shows safety points, submitted reports, platform-validated reports, routes improved, and your local user ID.',
       },
       {
         title: 'Check progress and badges',
