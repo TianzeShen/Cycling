@@ -6546,7 +6546,23 @@ code {
   }
 
   .map-report-hint {
-    display: none;
+    bottom: calc(var(--mobile-controls-height) + var(--mobile-bottom-safe) + 2rem);
+    display: flex;
+    left: var(--mobile-edge);
+    max-width: none;
+    padding: 0.55rem 0.7rem;
+    right: var(--mobile-edge);
+    transform: none;
+    width: auto;
+    z-index: 27;
+  }
+
+  .map-report-hint.map-report-hint-trip-active {
+    bottom: calc(var(--mobile-controls-height) + var(--mobile-bottom-safe) + 2rem);
+  }
+
+  .map-report-hint p {
+    font-size: 0.72rem;
   }
 
   .floating-controls,

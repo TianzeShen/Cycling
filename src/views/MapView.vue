@@ -951,6 +951,7 @@ const showHeatmapPanel = computed(() => mode.value === mapModes.heatmapPanel)
 const isSidePanelVisible = ref(shouldRestoreMapState ? savedMapState.isSidePanelVisible !== false : true)
 const showReportMarkers = ref(shouldRestoreMapState ? savedMapState.showReportMarkers !== false : true)
 const showSidePanel = computed(() => isSidePanelVisible.value)
+const showMapReportHint = computed(() => !showAnalysis.value || !showSidePanel.value)
 const mapDisplayMode = computed(() => (isHeatmapMode.value ? 'heatmap' : 'route'))
 const hasPlannedRoute = computed(() =>
   Boolean(
@@ -1770,6 +1771,7 @@ const mobileAnalysisStyle = computed(() => ({
     </section>
 
     <div
+      v-if="showMapReportHint"
       class="map-report-hint"
       :class="{ 'map-report-hint-trip-active': selectedRoute && !isHeatmapMode }"
       aria-label="How to report a map issue"
